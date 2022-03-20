@@ -42,7 +42,7 @@ To upload code to your ESP32 boards, please use the following configuration in t
 - Arduino Runs On: `Core 1`
 - Events Run On: `Core 1`
 
-If you have upload issues, try lowering the upload speed. 
+If you have upload issues, try lowering the upload speed. Some users also report having to hold the "boot" button on the ESP32 board after connecting it to their PC before pressing the upload button in the Arduino IDE.
 
 ## First Time Setup
 

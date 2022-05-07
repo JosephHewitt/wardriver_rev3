@@ -16,7 +16,7 @@ The Portable Wardriver uses 2 generic ESP32-DevKitC V4 development boards with a
 
 You can edit this list by opening the Arduino IDE preferences with ```File -> Preferences```
 
-You then need to open the Board Manager at ```Tools -> Board -> Boards Manager``` and search for "ESP32". Please install version 2.0.0 (at the time of writing, later versions have not been tested but *might* work). 
+You then need to open the Board Manager at ```Tools -> Board -> Boards Manager``` and search for "ESP32". Please install version 2.0.0. Later versions have not been tested fully and **version 2.0.3 is unsupported**.
 
 Instructions to install the ESP32 board definitions are also available on this [espressif.com docs page](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html#installing-using-boards-manager)
 

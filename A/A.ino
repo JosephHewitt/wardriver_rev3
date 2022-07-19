@@ -44,7 +44,7 @@ File filewriter;
 Preferences preferences;
 unsigned long bootcount = 0;
 
-const char* default_ssid = "wardriver.uk";
+String default_ssid = "wardriver.uk";
 const char* default_psk = "wardriver.uk";
 
 /* The recently seen MAC addresses and cell towers are saved into these arrays so that the 
@@ -142,7 +142,7 @@ void boot_config(){
     Serial.println(n);
     Serial.print("Connect to: ");
     Serial.println(default_ssid);
-    WiFi.softAP(default_ssid, default_psk);
+    WiFi.softAP(default_ssid.c_str(), default_psk);
     IPAddress IP = WiFi.softAPIP();
     clear_display();
     display.println("Connect to:");
@@ -517,6 +517,10 @@ void setup() {
 
     Serial.print("Chip ID: ");
     Serial.println(chip_id);
+
+    default_ssid.concat(" - ");
+    default_ssid.concat(chip_id);
+    default_ssid.remove(default_ssid.length()-3);
     
     Serial1.begin(115200,SERIAL_8N1,27,14);
     Serial2.begin(9600);

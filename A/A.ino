@@ -666,8 +666,11 @@ void primary_scan_loop(void * parameter){
           }
           //Save the AP MAC inside the history buffer so we know it's logged.
           save_mac(WiFi.BSSID(i));
+
+          String ssid = WiFi.SSID(i);
+          ssid.replace(",","_");
           
-          filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), WiFi.SSID(i).c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+          filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
          
         }
       }

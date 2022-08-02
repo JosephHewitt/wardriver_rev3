@@ -10,6 +10,15 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
+//LCD stuff. Side B does not normally have an LCD but this allows us to print an error if you flash the firmware onto the wrong ESP32.
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 #include <OneWire.h>
 OneWire  ds(22); //DS18B20 data pin is 22.
 byte addr[8]; //The DS18B20 address
@@ -201,6 +210,18 @@ void setup() {
       0); /* Core where the task should run */
 
   Serial.println("Started");
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
+      Serial.println(F("SSD1306 allocation failed (this is completely okay)"));
+  }
+  display.setRotation(2);
+  display.clearDisplay();
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(0, 0);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.println("SIDE B CODE RUNNING ON SIDE A?");
+  display.println("Check documentation @ wardriver.uk");
+  display.display();
 }
 
 unsigned long last_sim_request;

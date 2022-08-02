@@ -89,6 +89,8 @@ const char* ntpServer = "pool.ntp.org";
 
 TaskHandle_t primary_scan_loop_handle;
 
+boolean b_working = false; //Set to true when we receive some valid data from side B.
+
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
   WiFi.mode(WIFI_STA);
@@ -701,10 +703,14 @@ void lcd_show_stats(){
       display.println("No GSM pos");
     }
   }
+  if (b_working){
   display.print("BLE:");
   display.print(ble_count);
   display.print(" GSM:");
   display.println(disp_gsm_count);
+  } else {
+    display.println("ESP-B NO DATA");
+  }
   display.println(dt_string());
   display.display();
   if (gsm_count > 0){
@@ -1079,6 +1085,7 @@ String parse_bside_line(String buff){
     ble_count = blc.toInt();
     Serial.print("Bluetooth count = ");
     Serial.println(ble_count);
+    b_working = true;
   }
   
   return out;

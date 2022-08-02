@@ -269,11 +269,13 @@ void loop() {
     Serial.println(n);
     if (n > 0){
       for (int i = 0; i < n; i++) {
+        String ssid = WiFi.SSID(i);
+        ssid.replace(",","_");
         //Normally we would use "WIx," as the first value where x is the value of i+1. We're using "WI0," here to make it easier to parse on side A.
-        Serial.printf("WI%d,%s,%d,%d,%d,%s\n", 0, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), WiFi.BSSIDstr(i).c_str());
+        Serial.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), WiFi.BSSIDstr(i).c_str());
         await_serial();
         serial_lock = true;
-        Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), WiFi.BSSIDstr(i).c_str());
+        Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), WiFi.BSSIDstr(i).c_str());
         serial_lock = false;
       }
     }

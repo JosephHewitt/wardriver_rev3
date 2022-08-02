@@ -750,7 +750,8 @@ void loop(){
     towrite = parse_bside_line(bside_buffer);
     if (towrite.length() > 1){
       Serial.println(towrite);
-      filewriter.println(towrite);
+      filewriter.print(towrite);
+      filewriter.print("\n");
       filewriter.flush();
     }
     
@@ -936,6 +937,7 @@ String parse_bside_line(String buff){
         Serial.print("NEW BLE DEVICE: ");
         Serial.println(buff);
 
+        mac_str.toUpperCase();
         out = mac_str + "," + ble_name + "," + "[BLE]," + dt_string() + ",0," + rssi + "," + gps_string() + ",BLE";
       }
     }

@@ -26,6 +26,7 @@ In order for the project to compile, you need to download the following librarie
 - [Adafruit GFX Library](https://github.com/adafruit/Adafruit-GFX-Library) v1.10.x by Adafruit
 - [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306) v2.4.x by Adafruit
 - [OneWire](https://www.pjrc.com/teensy/td_libs_OneWire.html) v2.3.x by Paul Stoffregen
+- [GParser](https://github.com/GyverLibs/GParser) v1.4.x by AlexGyver
 
 If using the official PCB, the code in "B" corresponds to the board soldered above the silkscreen text "Made by Joseph Hewitt". The source file "A" is for the remaining ESP32. You may flash the boards when they are soldered to the PCB or before soldering -- it's your choice.
 

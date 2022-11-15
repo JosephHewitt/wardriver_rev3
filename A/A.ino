@@ -1,3 +1,8 @@
+#include <parseUtils.h>
+#include <GParser.h>
+#include <unicode.h>
+#include <url.h>
+
 //Joseph Hewitt 2021
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
@@ -209,10 +214,10 @@ void boot_config(){
                 Serial.println("Got WiFi config");
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
-                String new_ssid = buff.substring(startpos,endpos);
+                String new_ssid = GP_urldecode(buff.substring(startpos,endpos));
                 startpos = buff.indexOf("&psk=")+5;
                 endpos = buff.indexOf(" HTTP");
-                String new_psk = buff.substring(startpos,endpos);
+                String new_psk = GP_urldecode(buff.substring(startpos,endpos));
 
                 Serial.println(new_ssid);
                 preferences.putString("ssid", new_ssid);
@@ -238,10 +243,10 @@ void boot_config(){
                 Serial.println("Got WiFi (fallback) config");
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
-                String new_ssid = buff.substring(startpos,endpos);
+                String new_ssid = GP_urldecode(buff.substring(startpos,endpos));
                 startpos = buff.indexOf("&psk=")+5;
                 endpos = buff.indexOf(" HTTP");
-                String new_psk = buff.substring(startpos,endpos);
+                String new_psk = GP_urldecode(buff.substring(startpos,endpos));
 
                 Serial.println(new_ssid);
                 preferences.putString("fbssid", new_ssid);
@@ -286,10 +291,10 @@ void boot_config(){
   bootcount++;
   preferences.putULong("bootcount", bootcount);
 
-  String con_ssid = preferences.getString("ssid","");
-  String con_psk = preferences.getString("psk","");
-  String fb_ssid = preferences.getString("fbssid","");
-  String fb_psk = preferences.getString("fbpsk","");
+  String con_ssid = GP_urldecode(preferences.getString("ssid",""));
+  String con_psk = GP_urldecode(preferences.getString("psk",""));
+  String fb_ssid = GP_urldecode(preferences.getString("fbssid",""));
+  String fb_psk = GP_urldecode(preferences.getString("fbpsk",""));
   boolean created_network = false; //Set to true automatically when the fallback network is created.
 
   if (con_ssid != "" || fb_ssid != ""){

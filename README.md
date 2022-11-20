@@ -9,6 +9,10 @@ The main code is split up into 2 separate files (A and B) for the 2 different ES
 
 For information about the Wardriver hardware, please see [the official wiki](https://wardriver.uk)
 
+## Repository Version
+
+The `main` branch of this project is the testing/alpha branch; you should only use it if you are contributing code or want to help debug the latest features. Please use the `Releases` tab on the right to download stable versions.
+
 ## Flashing
 
 The Portable Wardriver uses 2 generic ESP32-DevKitC V4 development boards with an ESP32-WROOM-32U chip each. I recommend flashing your ESP32 boards with the Arduino IDE. In order for this to work, you will need to add the following URL to your "Additional Boards Manager URLs" list in the Arduino IDE:
@@ -23,9 +27,9 @@ Instructions to install the ESP32 board definitions are also available on this [
 In order for the project to compile, you need to download the following libraries which can all be installed using the Arduino IDE libraries manager at ```Sketch -> Include Library -> Manage Libraries```
 
 - [MicroNMEA](https://github.com/stevemarple/MicroNMEA) v2.0.x by Steven Marple
-- [Adafruit GFX Library](https://github.com/adafruit/Adafruit-GFX-Library) v1.10.x by Adafruit
-- [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306) v2.4.x by Adafruit
-- [OneWire](https://www.pjrc.com/teensy/td_libs_OneWire.html) v2.3.x by Paul Stoffregen
+- [Adafruit GFX Library](https://github.com/adafruit/Adafruit-GFX-Library) v1.11.x by Adafruit
+- [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306) v2.5.x by Adafruit
+- [OneWire](https://www.pjrc.com/teensy/td_libs_OneWire.html) at least v2.3.7 by Paul Stoffregen
 - [GParser](https://github.com/GyverLibs/GParser) v1.4.x by AlexGyver
 
 If using the official PCB, the code in "B" corresponds to the board soldered above the silkscreen text "Made by Joseph Hewitt". The source file "A" is for the remaining ESP32. You may flash the boards when they are soldered to the PCB or before soldering -- it's your choice.

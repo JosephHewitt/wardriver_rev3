@@ -1,13 +1,9 @@
-#include <parseUtils.h>
-#include <GParser.h>
-#include <unicode.h>
-#include <url.h>
-
-//Joseph Hewitt 2021
+//Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
 const String VERSION = "1.0.1";
 
+#include <GParser.h>
 #include <MicroNMEA.h>
 #include "FS.h"
 #include "SD.h"

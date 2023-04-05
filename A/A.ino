@@ -393,8 +393,8 @@ void boot_config(){
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1></head><table>");
-                    client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th></tr>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
+                    client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
@@ -421,7 +421,13 @@ void boot_config(){
                         client.print(entry.size()/1024);
                         client.print(" kb</td><td>");
                         client.print(get_latest_datetime(filename));
-                        client.println("</td></tr>");
+                        client.print("</td>");
+                        client.print("<td>");
+                        client.print("<a href=\"/delete?fn=");
+                        client.print(filename);
+                        client.print("\">");
+                        client.print("DEL</a></td>");
+                        client.println("</tr>");
                       }
                     }
                     client.print("</table><br><hr>");
@@ -448,6 +454,21 @@ void boot_config(){
                         epoch_updated_at = millis();
                       }
                     }
+                  }
+
+                  if (buff.indexOf("GET /delete?") > -1) {
+                    Serial.println("File delete request");
+                    int startpos = buff.indexOf("?fn=")+4;
+                    int endpos = buff.indexOf(" ",startpos);
+                    String filename = buff.substring(startpos,endpos);
+                    Serial.println(filename);
+                    SD.remove(filename);
+                    client.println();
+                    client.print("<h1>Deleted ");
+                    client.print(filename);
+                    client.println("</h1>");
+                    client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    
                   }
 
                   if (buff.indexOf("GET /download?") > -1) {

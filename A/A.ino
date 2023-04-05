@@ -22,6 +22,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define gps_allow_stale_time 60000 //ms to allow stale gps data for when lock lost.
 
+
 //These variables are used for buffering/caching GPS data.
 char nmeaBuffer[100];
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
@@ -29,6 +30,11 @@ unsigned long lastgps = 0;
 String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
+
+//A giant string to hold restricted MACs/SSIDs. Defined by bl.txt on boot.
+String blocklist = "";
+//Automatically set to true if a blocklist was loaded.
+boolean use_blocklist = false;
 
 //These variables are used to populate the LCD with statistics.
 float temperature;
@@ -181,7 +187,7 @@ void boot_config(){
               client.println();
 
               if (buff.indexOf("GET / HTTP") > -1) {
-                Serial.println("Sending homepage");
+                Serial.println("Sending FTS homepage");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1><h2>First time setup</h2>");
                 client.print("Please provide the credentials of your WiFi network to get started.<br>");
@@ -623,6 +629,31 @@ void setup() {
     filewriter.print(epoch);
     filewriter.flush();
     filewriter.close();
+
+    if (SD.exists("/bl.txt")){
+      Serial.println("Opening blocklist");
+      File blreader;
+      blreader = SD.open("/bl.txt", FILE_READ);
+      while (blreader.available()){
+        char c = blreader.read();
+        blocklist.concat(c);
+      }
+      blreader.close();
+      Serial.print("loaded blocklist: ");
+      Serial.print(blocklist.length());
+      Serial.println(" bytes");
+
+      if (blocklist.length() > 0){
+        use_blocklist = true;
+      }
+      Serial.print("*****");
+      Serial.print(blocklist);
+      Serial.println("*****");
+    }
+
+    if (!use_blocklist){
+      Serial.println("Not using a blocklist");
+    }
     
     Serial.println("Opening destination file for writing");
 
@@ -670,6 +701,20 @@ void primary_scan_loop(void * parameter){
 
           String ssid = WiFi.SSID(i);
           ssid.replace(",","_");
+          if (use_blocklist){
+            if (blocklist.indexOf(ssid) != -1){
+              Serial.print("BLOCK: ");
+              Serial.println(ssid);
+              continue;
+            }
+            String tmp_mac_str = WiFi.BSSIDstr(i).c_str();
+            tmp_mac_str.toUpperCase();
+            if (blocklist.indexOf(tmp_mac_str) != -1){
+              Serial.print("BLOCK: ");
+              Serial.println(tmp_mac_str);
+              continue;
+            }
+          }
           
           filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
          
@@ -930,6 +975,17 @@ String parse_bside_line(String buff){
     unsigned char mac_bytes[6];
     int values[6];
 
+    if (use_blocklist){
+      if (blocklist.indexOf(ble_name) != -1 || blocklist.indexOf(mac_str) != -1){
+        out = "";
+        Serial.print("BLOCK: ");
+        Serial.print(ble_name);
+        Serial.print(" / ");
+        Serial.println(mac_str);
+        return out;
+      }
+    }
+
     if (6 == sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])){
       for(int i = 0; i < 6; ++i ){
           mac_bytes[i] = (unsigned char) values[i];
@@ -968,6 +1024,18 @@ String parse_bside_line(String buff){
     startpos = endpos+1;
     endpos = startpos+17;
     String mac_str = buff.substring(startpos,endpos);
+    mac_str.toUpperCase();
+
+    if (use_blocklist){
+      if (blocklist.indexOf(ssid) != -1 || blocklist.indexOf(mac_str) != -1){
+        out = "";
+        Serial.print("BLOCK: ");
+        Serial.print(ssid);
+        Serial.print(" / ");
+        Serial.println(mac_str);
+        return out;
+      }
+    }
 
     unsigned char mac_bytes[6];
     int values[6];

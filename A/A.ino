@@ -35,6 +35,9 @@ String last_lons = "";
 String blocklist = "";
 //Automatically set to true if a blocklist was loaded.
 boolean use_blocklist = false;
+//millis() when the last block happened.
+unsigned long ble_block_at = 0;
+unsigned long wifi_block_at = 0;
 
 //These variables are used to populate the LCD with statistics.
 float temperature;
@@ -705,6 +708,7 @@ void primary_scan_loop(void * parameter){
             if (blocklist.indexOf(ssid) != -1){
               Serial.print("BLOCK: ");
               Serial.println(ssid);
+              wifi_block_at = millis();
               continue;
             }
             String tmp_mac_str = WiFi.BSSIDstr(i).c_str();
@@ -712,6 +716,7 @@ void primary_scan_loop(void * parameter){
             if (blocklist.indexOf(tmp_mac_str) != -1){
               Serial.print("BLOCK: ");
               Serial.println(tmp_mac_str);
+              wifi_block_at = millis();
               continue;
             }
           }
@@ -728,9 +733,20 @@ void primary_scan_loop(void * parameter){
 
 void lcd_show_stats(){
   //Clear the LCD then populate it with stats about the current session.
+  boolean ble_did_block = false;
+  boolean wifi_did_block = false;
+  if (millis() - wifi_block_at < 30000){
+    wifi_did_block = true;
+  }
+  if (millis() - ble_block_at < 30000){
+    ble_did_block = true;
+  }
   clear_display();
   display.print("WiFi:");
   display.print(disp_wifi_count);
+  if (wifi_did_block){
+    display.print("X");
+  }
   if (int(temperature) != 0){
     display.print(" Temp:");
     display.print(temperature);
@@ -755,6 +771,9 @@ void lcd_show_stats(){
   if (b_working){
   display.print("BLE:");
   display.print(ble_count);
+  if (ble_did_block){
+    display.print("X");
+  }
   display.print(" GSM:");
   display.println(disp_gsm_count);
   } else {
@@ -982,6 +1001,7 @@ String parse_bside_line(String buff){
         Serial.print(ble_name);
         Serial.print(" / ");
         Serial.println(mac_str);
+        ble_block_at = millis();
         return out;
       }
     }
@@ -1033,6 +1053,7 @@ String parse_bside_line(String buff){
         Serial.print(ssid);
         Serial.print(" / ");
         Serial.println(mac_str);
+        wifi_block_at = millis();
         return out;
       }
     }

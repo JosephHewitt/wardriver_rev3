@@ -22,6 +22,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define gps_allow_stale_time 60000 //ms to allow stale gps data for when lock lost.
 
+unsigned long web_timeout = 60000; //ms to spend hosting the web interface before booting.
+
 
 //These variables are used for buffering/caching GPS data.
 char nmeaBuffer[100];
@@ -355,26 +357,25 @@ void boot_config(){
         Serial.println(epoch);
         Serial.println("Continuing..");
       }
-      unsigned long disconnectat = millis() + 10000;
+      unsigned long disconnectat = millis() + web_timeout;
       String buff;
       boolean newline = false;
-      clear_display();
-      display.println("Connected.");
-      if (created_network){
-        display.print("SSID:");
-        display.println(fb_ssid);
-        display.println(fb_IP);
-        Serial.println(fb_IP);
-        
-        disconnectat += 60000;
-      } else {
-        display.println(WiFi.localIP());
-        Serial.println(WiFi.localIP());
-      }
-      display.display();
       WiFiServer server(80);
       server.begin();
       while (WiFi.status() == WL_CONNECTED || created_network == true){
+        clear_display();
+        if (created_network){
+          display.print("SSID:");
+          display.println(fb_ssid);
+          display.println(fb_IP);
+        } else {
+          display.println("Connected");
+          display.println(WiFi.localIP());
+        }
+        display.print((disconnectat - millis())/1000);
+        display.println("s until boot");
+        display.display();
+        
         if (millis() > disconnectat){
           Serial.println("Disconnecting");
           clear_display();
@@ -386,12 +387,21 @@ void boot_config(){
         }
         WiFiClient client = server.available();
         if (client){
-          Serial.println("client connected");
+          Serial.println("client connected, awaiting request");
           clear_display();
           display.println("Client connected");
+          display.println("Awaiting request..");
           display.display();
+          boolean first_byte = true;
           while (client.connected()){
             if (client.available()){
+              if (first_byte){
+                first_byte = false;
+                Serial.println("Got first byte of request");
+                display.println("..got one");
+                display.println("Handling..");
+                display.display();
+              }
               char c = client.read();
               Serial.write(c);
               buff += c;
@@ -403,7 +413,7 @@ void boot_config(){
                   client.println("Content-type: text/html");
                   client.println("Connection: close");
                   
-                  disconnectat = millis() + 60000;
+                  disconnectat = millis() + web_timeout;
     
                   if (buff.indexOf("GET / HTTP") > -1) {
                     client.println();
@@ -534,7 +544,18 @@ void boot_config(){
                 }
               }
               
-            } //if client available
+            } else {
+              if (created_network){
+                display.print("SSID:");
+                display.println(fb_ssid);
+                display.println(fb_IP);
+              } else {
+                display.println("Connected");
+                display.println(WiFi.localIP());
+              }
+              display.print((disconnectat - millis())/1000);
+              display.println("s until boot");
+            }
           } //while client connected
         } //if client
       } //while wifi

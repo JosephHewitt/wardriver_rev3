@@ -22,6 +22,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define gps_allow_stale_time 60000 //ms to allow stale gps data for when lock lost.
 
+
 //These variables are used for buffering/caching GPS data.
 char nmeaBuffer[100];
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
@@ -29,6 +30,12 @@ unsigned long lastgps = 0;
 String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
+
+//Automatically set to true if a blocklist was loaded.
+boolean use_blocklist = false;
+//millis() when the last block happened.
+unsigned long ble_block_at = 0;
+unsigned long wifi_block_at = 0;
 
 //These variables are used to populate the LCD with statistics.
 float temperature;
@@ -54,6 +61,9 @@ const char* default_psk = "wardriver.uk";
  */
 #define mac_history_len 512
 #define cell_history_len 128
+#define blocklist_len 20
+//Max blocklist entry length. 32 = max SSID len.
+#define blocklist_str_len 32
 
 struct mac_addr {
    unsigned char bytes[6];
@@ -75,11 +85,17 @@ struct cell_tower {
   struct coordinates pos;
 };
 
+struct block_str {
+  char characters[blocklist_str_len];
+};
+
 struct mac_addr mac_history[mac_history_len];
 unsigned int mac_history_cursor = 0;
 
 struct cell_tower cell_history[cell_history_len];
 unsigned int cell_history_cursor = 0;
+
+struct block_str block_list[blocklist_len];
 
 unsigned long lcd_last_updated;
 
@@ -181,7 +197,7 @@ void boot_config(){
               client.println();
 
               if (buff.indexOf("GET / HTTP") > -1) {
-                Serial.println("Sending homepage");
+                Serial.println("Sending FTS homepage");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1><h2>First time setup</h2>");
                 client.print("Please provide the credentials of your WiFi network to get started.<br>");
@@ -644,6 +660,36 @@ void setup() {
     filewriter.print(epoch);
     filewriter.flush();
     filewriter.close();
+
+    if (SD.exists("/bl.txt")){
+      Serial.println("Opening blocklist");
+      File blreader;
+      blreader = SD.open("/bl.txt", FILE_READ);
+      byte i = 0;
+      byte ci = 0;
+      while (blreader.available()){
+        char c = blreader.read();
+        if (c == '\n' || c == '\r'){
+          use_blocklist = true;
+          if (ci != 0){
+            i += 1;
+          }
+          ci = 0;
+        } else {
+          block_list[i].characters[ci] = c;
+          ci += 1;
+          if (ci >= blocklist_str_len){
+            Serial.println("Blocklist line too long!");
+            ci = 0;
+          }
+        }
+      }
+      blreader.close();
+    }
+
+    if (!use_blocklist){
+      Serial.println("Not using a blocklist");
+    }
     
     Serial.println("Opening destination file for writing");
 
@@ -691,6 +737,22 @@ void primary_scan_loop(void * parameter){
 
           String ssid = WiFi.SSID(i);
           ssid.replace(",","_");
+          if (use_blocklist){
+            if (is_blocked(ssid)){
+              Serial.print("BLOCK: ");
+              Serial.println(ssid);
+              wifi_block_at = millis();
+              continue;
+            }
+            String tmp_mac_str = WiFi.BSSIDstr(i).c_str();
+            tmp_mac_str.toUpperCase();
+            if (is_blocked(tmp_mac_str)){
+              Serial.print("BLOCK: ");
+              Serial.println(tmp_mac_str);
+              wifi_block_at = millis();
+              continue;
+            }
+          }
           
           filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
          
@@ -704,9 +766,20 @@ void primary_scan_loop(void * parameter){
 
 void lcd_show_stats(){
   //Clear the LCD then populate it with stats about the current session.
+  boolean ble_did_block = false;
+  boolean wifi_did_block = false;
+  if (millis() - wifi_block_at < 30000){
+    wifi_did_block = true;
+  }
+  if (millis() - ble_block_at < 30000){
+    ble_did_block = true;
+  }
   clear_display();
   display.print("WiFi:");
   display.print(disp_wifi_count);
+  if (wifi_did_block){
+    display.print("X");
+  }
   if (int(temperature) != 0){
     display.print(" Temp:");
     display.print(temperature);
@@ -731,6 +804,9 @@ void lcd_show_stats(){
   if (b_working){
   display.print("BLE:");
   display.print(ble_count);
+  if (ble_did_block){
+    display.print("X");
+  }
   display.print(" GSM:");
   display.println(disp_gsm_count);
   } else {
@@ -801,6 +877,36 @@ void save_cell(struct cell_tower tower){
 
   Serial.print("Tower len ");
   Serial.println(cell_history_cursor);
+}
+
+boolean is_blocked(String test_str){
+  if (!use_blocklist){
+    return false;
+  }
+  unsigned int test_str_len = test_str.length();
+  if (test_str_len == 0){
+    return false;
+  }
+  if (test_str_len > blocklist_str_len){
+    Serial.print("Refusing to blocklist check due to length: ");
+    Serial.println(test_str);
+    return false;
+  }
+  for (byte i=0; i<blocklist_len; i++){
+    boolean matched = true;
+    for (byte ci=0; ci<test_str_len; ci++){
+      if (test_str.charAt(ci) != block_list[i].characters[ci]){
+        matched = false;
+        break;
+      }
+    }
+    if (matched){
+      Serial.print("Blocklist match: ");
+      Serial.println(test_str);
+      return true;
+    }
+  }
+  return false;
 }
 
 void replace_cell(struct cell_tower tower1, struct cell_tower tower2){
@@ -951,6 +1057,16 @@ String parse_bside_line(String buff){
     unsigned char mac_bytes[6];
     int values[6];
 
+    if (is_blocked(ble_name) || is_blocked(mac_str)){
+      out = "";
+      Serial.print("BLOCK: ");
+      Serial.print(ble_name);
+      Serial.print(" / ");
+      Serial.println(mac_str);
+      ble_block_at = millis();
+      return out;
+    }
+
     if (6 == sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])){
       for(int i = 0; i < 6; ++i ){
           mac_bytes[i] = (unsigned char) values[i];
@@ -989,6 +1105,17 @@ String parse_bside_line(String buff){
     startpos = endpos+1;
     endpos = startpos+17;
     String mac_str = buff.substring(startpos,endpos);
+    mac_str.toUpperCase();
+
+    if (is_blocked(ssid) || is_blocked(mac_str)){
+      out = "";
+      Serial.print("BLOCK: ");
+      Serial.print(ssid);
+      Serial.print(" / ");
+      Serial.println(mac_str);
+      wifi_block_at = millis();
+      return out;
+    }
 
     unsigned char mac_bytes[6];
     int values[6];

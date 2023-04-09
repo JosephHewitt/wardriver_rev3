@@ -31,8 +31,6 @@ String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
 
-//A giant string to hold restricted MACs/SSIDs. Defined by bl.txt on boot.
-String blocklist = "";
 //Automatically set to true if a blocklist was loaded.
 boolean use_blocklist = false;
 //millis() when the last block happened.
@@ -63,6 +61,9 @@ const char* default_psk = "wardriver.uk";
  */
 #define mac_history_len 512
 #define cell_history_len 128
+#define blocklist_len 20
+//Max blocklist entry length. 32 = max SSID len.
+#define blocklist_str_len 32
 
 struct mac_addr {
    unsigned char bytes[6];
@@ -84,11 +85,17 @@ struct cell_tower {
   struct coordinates pos;
 };
 
+struct block_str {
+  char characters[blocklist_str_len];
+};
+
 struct mac_addr mac_history[mac_history_len];
 unsigned int mac_history_cursor = 0;
 
 struct cell_tower cell_history[cell_history_len];
 unsigned int cell_history_cursor = 0;
+
+struct block_str block_list[blocklist_len];
 
 unsigned long lcd_last_updated;
 
@@ -637,21 +644,26 @@ void setup() {
       Serial.println("Opening blocklist");
       File blreader;
       blreader = SD.open("/bl.txt", FILE_READ);
+      byte i = 0;
+      byte ci = 0;
       while (blreader.available()){
         char c = blreader.read();
-        blocklist.concat(c);
+        if (c == '\n' || c == '\r'){
+          use_blocklist = true;
+          if (ci != 0){
+            i += 1;
+          }
+          ci = 0;
+        } else {
+          block_list[i].characters[ci] = c;
+          ci += 1;
+          if (ci >= blocklist_str_len){
+            Serial.println("Blocklist line too long!");
+            ci = 0;
+          }
+        }
       }
       blreader.close();
-      Serial.print("loaded blocklist: ");
-      Serial.print(blocklist.length());
-      Serial.println(" bytes");
-
-      if (blocklist.length() > 0){
-        use_blocklist = true;
-      }
-      Serial.print("*****");
-      Serial.print(blocklist);
-      Serial.println("*****");
     }
 
     if (!use_blocklist){
@@ -705,7 +717,7 @@ void primary_scan_loop(void * parameter){
           String ssid = WiFi.SSID(i);
           ssid.replace(",","_");
           if (use_blocklist){
-            if (blocklist.indexOf(ssid) != -1){
+            if (is_blocked(ssid)){
               Serial.print("BLOCK: ");
               Serial.println(ssid);
               wifi_block_at = millis();
@@ -713,7 +725,7 @@ void primary_scan_loop(void * parameter){
             }
             String tmp_mac_str = WiFi.BSSIDstr(i).c_str();
             tmp_mac_str.toUpperCase();
-            if (blocklist.indexOf(tmp_mac_str) != -1){
+            if (is_blocked(tmp_mac_str)){
               Serial.print("BLOCK: ");
               Serial.println(tmp_mac_str);
               wifi_block_at = millis();
@@ -844,6 +856,36 @@ void save_cell(struct cell_tower tower){
 
   Serial.print("Tower len ");
   Serial.println(cell_history_cursor);
+}
+
+boolean is_blocked(String test_str){
+  if (!use_blocklist){
+    return false;
+  }
+  unsigned int test_str_len = test_str.length();
+  if (test_str_len == 0){
+    return false;
+  }
+  if (test_str_len > blocklist_str_len){
+    Serial.print("Refusing to blocklist check due to length: ");
+    Serial.println(test_str);
+    return false;
+  }
+  for (byte i=0; i<blocklist_len; i++){
+    boolean matched = true;
+    for (byte ci=0; ci<test_str_len; ci++){
+      if (test_str.charAt(ci) != block_list[i].characters[ci]){
+        matched = false;
+        break;
+      }
+    }
+    if (matched){
+      Serial.print("Blocklist match: ");
+      Serial.println(test_str);
+      return true;
+    }
+  }
+  return false;
 }
 
 void replace_cell(struct cell_tower tower1, struct cell_tower tower2){
@@ -994,16 +1036,14 @@ String parse_bside_line(String buff){
     unsigned char mac_bytes[6];
     int values[6];
 
-    if (use_blocklist){
-      if (blocklist.indexOf(ble_name) != -1 || blocklist.indexOf(mac_str) != -1){
-        out = "";
-        Serial.print("BLOCK: ");
-        Serial.print(ble_name);
-        Serial.print(" / ");
-        Serial.println(mac_str);
-        ble_block_at = millis();
-        return out;
-      }
+    if (is_blocked(ble_name) || is_blocked(mac_str)){
+      out = "";
+      Serial.print("BLOCK: ");
+      Serial.print(ble_name);
+      Serial.print(" / ");
+      Serial.println(mac_str);
+      ble_block_at = millis();
+      return out;
     }
 
     if (6 == sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])){
@@ -1046,16 +1086,14 @@ String parse_bside_line(String buff){
     String mac_str = buff.substring(startpos,endpos);
     mac_str.toUpperCase();
 
-    if (use_blocklist){
-      if (blocklist.indexOf(ssid) != -1 || blocklist.indexOf(mac_str) != -1){
-        out = "";
-        Serial.print("BLOCK: ");
-        Serial.print(ssid);
-        Serial.print(" / ");
-        Serial.println(mac_str);
-        wifi_block_at = millis();
-        return out;
-      }
+    if (is_blocked(ssid) || is_blocked(mac_str)){
+      out = "";
+      Serial.print("BLOCK: ");
+      Serial.print(ssid);
+      Serial.print(" / ");
+      Serial.println(mac_str);
+      wifi_block_at = millis();
+      return out;
     }
 
     unsigned char mac_bytes[6];

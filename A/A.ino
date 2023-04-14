@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.0.1";
+const String VERSION = "1.0.2b1";
 
 #include <GParser.h>
 #include <MicroNMEA.h>

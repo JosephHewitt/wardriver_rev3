@@ -289,6 +289,7 @@ void loop2( void * parameter) {
       char linebuf[120];
       int i = 0;
       int linelen = 0;
+      int no_data_times = 0;
       while (i < 120){
         if (Serial2.available()){
           char c = Serial2.read();
@@ -301,6 +302,12 @@ void loop2( void * parameter) {
           }
           linebuf[i] = c;
           i++;
+        } else {
+          no_data_times++;
+          if (no_data_times > 500){
+            break;
+          }
+          delay(2);
         }
       }
      linelen = i;

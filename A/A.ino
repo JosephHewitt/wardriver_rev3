@@ -1,13 +1,9 @@
-#include <parseUtils.h>
-#include <GParser.h>
-#include <unicode.h>
-#include <url.h>
-
-//Joseph Hewitt 2021
+//Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.0.3";
+const String VERSION = "1.1.0b1";
 
+#include <GParser.h>
 #include <MicroNMEA.h>
 #include "FS.h"
 #include "SD.h"
@@ -26,6 +22,9 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define gps_allow_stale_time 60000 //ms to allow stale gps data for when lock lost.
 
+unsigned long web_timeout = 60000; //ms to spend hosting the web interface before booting.
+
+
 //These variables are used for buffering/caching GPS data.
 char nmeaBuffer[100];
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
@@ -33,6 +32,12 @@ unsigned long lastgps = 0;
 String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
+
+//Automatically set to true if a blocklist was loaded.
+boolean use_blocklist = false;
+//millis() when the last block happened.
+unsigned long ble_block_at = 0;
+unsigned long wifi_block_at = 0;
 
 //These variables are used to populate the LCD with statistics.
 float temperature;
@@ -58,6 +63,9 @@ const char* default_psk = "wardriver.uk";
  */
 #define mac_history_len 512
 #define cell_history_len 128
+#define blocklist_len 20
+//Max blocklist entry length. 32 = max SSID len.
+#define blocklist_str_len 32
 
 struct mac_addr {
    unsigned char bytes[6];
@@ -79,11 +87,17 @@ struct cell_tower {
   struct coordinates pos;
 };
 
+struct block_str {
+  char characters[blocklist_str_len];
+};
+
 struct mac_addr mac_history[mac_history_len];
 unsigned int mac_history_cursor = 0;
 
 struct cell_tower cell_history[cell_history_len];
 unsigned int cell_history_cursor = 0;
+
+struct block_str block_list[blocklist_len];
 
 unsigned long lcd_last_updated;
 
@@ -185,7 +199,7 @@ void boot_config(){
               client.println();
 
               if (buff.indexOf("GET / HTTP") > -1) {
-                Serial.println("Sending homepage");
+                Serial.println("Sending FTS homepage");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1><h2>First time setup</h2>");
                 client.print("Please provide the credentials of your WiFi network to get started.<br>");
@@ -343,26 +357,25 @@ void boot_config(){
         Serial.println(epoch);
         Serial.println("Continuing..");
       }
-      unsigned long disconnectat = millis() + 10000;
+      unsigned long disconnectat = millis() + web_timeout;
       String buff;
       boolean newline = false;
-      clear_display();
-      display.println("Connected.");
-      if (created_network){
-        display.print("SSID:");
-        display.println(fb_ssid);
-        display.println(fb_IP);
-        Serial.println(fb_IP);
-        
-        disconnectat += 60000;
-      } else {
-        display.println(WiFi.localIP());
-        Serial.println(WiFi.localIP());
-      }
-      display.display();
       WiFiServer server(80);
       server.begin();
       while (WiFi.status() == WL_CONNECTED || created_network == true){
+        clear_display();
+        if (created_network){
+          display.print("SSID:");
+          display.println(fb_ssid);
+          display.println(fb_IP);
+        } else {
+          display.println("Connected");
+          display.println(WiFi.localIP());
+        }
+        display.print((disconnectat - millis())/1000);
+        display.println("s until boot");
+        display.display();
+        
         if (millis() > disconnectat){
           Serial.println("Disconnecting");
           clear_display();
@@ -374,12 +387,21 @@ void boot_config(){
         }
         WiFiClient client = server.available();
         if (client){
-          Serial.println("client connected");
+          Serial.println("client connected, awaiting request");
           clear_display();
           display.println("Client connected");
+          display.println("Awaiting request..");
           display.display();
+          boolean first_byte = true;
           while (client.connected()){
             if (client.available()){
+              if (first_byte){
+                first_byte = false;
+                Serial.println("Got first byte of request");
+                display.println("..got one");
+                display.println("Handling..");
+                display.display();
+              }
               char c = client.read();
               Serial.write(c);
               buff += c;
@@ -391,14 +413,14 @@ void boot_config(){
                   client.println("Content-type: text/html");
                   client.println("Connection: close");
                   
-                  disconnectat = millis() + 60000;
+                  disconnectat = millis() + web_timeout;
     
                   if (buff.indexOf("GET / HTTP") > -1) {
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1></head><table>");
-                    client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th></tr>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
+                    client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
@@ -425,7 +447,13 @@ void boot_config(){
                         client.print(entry.size()/1024);
                         client.print(" kb</td><td>");
                         client.print(get_latest_datetime(filename));
-                        client.println("</td></tr>");
+                        client.print("</td>");
+                        client.print("<td>");
+                        client.print("<a href=\"/delete?fn=");
+                        client.print(filename);
+                        client.print("\">");
+                        client.print("DEL</a></td>");
+                        client.println("</tr>");
                       }
                     }
                     client.print("</table><br><hr>");
@@ -452,6 +480,21 @@ void boot_config(){
                         epoch_updated_at = millis();
                       }
                     }
+                  }
+
+                  if (buff.indexOf("GET /delete?") > -1) {
+                    Serial.println("File delete request");
+                    int startpos = buff.indexOf("?fn=")+4;
+                    int endpos = buff.indexOf(" ",startpos);
+                    String filename = buff.substring(startpos,endpos);
+                    Serial.println(filename);
+                    SD.remove(filename);
+                    client.println();
+                    client.print("<h1>Deleted ");
+                    client.print(filename);
+                    client.println("</h1>");
+                    client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    
                   }
 
                   if (buff.indexOf("GET /download?") > -1) {
@@ -501,7 +544,18 @@ void boot_config(){
                 }
               }
               
-            } //if client available
+            } else {
+              if (created_network){
+                display.print("SSID:");
+                display.println(fb_ssid);
+                display.println(fb_IP);
+              } else {
+                display.println("Connected");
+                display.println(WiFi.localIP());
+              }
+              display.print((disconnectat - millis())/1000);
+              display.println("s until boot");
+            }
           } //while client connected
         } //if client
       } //while wifi
@@ -627,6 +681,36 @@ void setup() {
     filewriter.print(epoch);
     filewriter.flush();
     filewriter.close();
+
+    if (SD.exists("/bl.txt")){
+      Serial.println("Opening blocklist");
+      File blreader;
+      blreader = SD.open("/bl.txt", FILE_READ);
+      byte i = 0;
+      byte ci = 0;
+      while (blreader.available()){
+        char c = blreader.read();
+        if (c == '\n' || c == '\r'){
+          use_blocklist = true;
+          if (ci != 0){
+            i += 1;
+          }
+          ci = 0;
+        } else {
+          block_list[i].characters[ci] = c;
+          ci += 1;
+          if (ci >= blocklist_str_len){
+            Serial.println("Blocklist line too long!");
+            ci = 0;
+          }
+        }
+      }
+      blreader.close();
+    }
+
+    if (!use_blocklist){
+      Serial.println("Not using a blocklist");
+    }
     
     Serial.println("Opening destination file for writing");
 
@@ -674,6 +758,22 @@ void primary_scan_loop(void * parameter){
 
           String ssid = WiFi.SSID(i);
           ssid.replace(",","_");
+          if (use_blocklist){
+            if (is_blocked(ssid)){
+              Serial.print("BLOCK: ");
+              Serial.println(ssid);
+              wifi_block_at = millis();
+              continue;
+            }
+            String tmp_mac_str = WiFi.BSSIDstr(i).c_str();
+            tmp_mac_str.toUpperCase();
+            if (is_blocked(tmp_mac_str)){
+              Serial.print("BLOCK: ");
+              Serial.println(tmp_mac_str);
+              wifi_block_at = millis();
+              continue;
+            }
+          }
           
           filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
          
@@ -687,9 +787,20 @@ void primary_scan_loop(void * parameter){
 
 void lcd_show_stats(){
   //Clear the LCD then populate it with stats about the current session.
+  boolean ble_did_block = false;
+  boolean wifi_did_block = false;
+  if (millis() - wifi_block_at < 30000){
+    wifi_did_block = true;
+  }
+  if (millis() - ble_block_at < 30000){
+    ble_did_block = true;
+  }
   clear_display();
   display.print("WiFi:");
   display.print(disp_wifi_count);
+  if (wifi_did_block){
+    display.print("X");
+  }
   if (int(temperature) != 0){
     display.print(" Temp:");
     display.print(temperature);
@@ -714,6 +825,9 @@ void lcd_show_stats(){
   if (b_working){
   display.print("BLE:");
   display.print(ble_count);
+  if (ble_did_block){
+    display.print("X");
+  }
   display.print(" GSM:");
   display.println(disp_gsm_count);
   } else {
@@ -784,6 +898,36 @@ void save_cell(struct cell_tower tower){
 
   Serial.print("Tower len ");
   Serial.println(cell_history_cursor);
+}
+
+boolean is_blocked(String test_str){
+  if (!use_blocklist){
+    return false;
+  }
+  unsigned int test_str_len = test_str.length();
+  if (test_str_len == 0){
+    return false;
+  }
+  if (test_str_len > blocklist_str_len){
+    Serial.print("Refusing to blocklist check due to length: ");
+    Serial.println(test_str);
+    return false;
+  }
+  for (byte i=0; i<blocklist_len; i++){
+    boolean matched = true;
+    for (byte ci=0; ci<test_str_len; ci++){
+      if (test_str.charAt(ci) != block_list[i].characters[ci]){
+        matched = false;
+        break;
+      }
+    }
+    if (matched){
+      Serial.print("Blocklist match: ");
+      Serial.println(test_str);
+      return true;
+    }
+  }
+  return false;
 }
 
 void replace_cell(struct cell_tower tower1, struct cell_tower tower2){
@@ -934,6 +1078,16 @@ String parse_bside_line(String buff){
     unsigned char mac_bytes[6];
     int values[6];
 
+    if (is_blocked(ble_name) || is_blocked(mac_str)){
+      out = "";
+      Serial.print("BLOCK: ");
+      Serial.print(ble_name);
+      Serial.print(" / ");
+      Serial.println(mac_str);
+      ble_block_at = millis();
+      return out;
+    }
+
     if (6 == sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])){
       for(int i = 0; i < 6; ++i ){
           mac_bytes[i] = (unsigned char) values[i];
@@ -972,6 +1126,17 @@ String parse_bside_line(String buff){
     startpos = endpos+1;
     endpos = startpos+17;
     String mac_str = buff.substring(startpos,endpos);
+    mac_str.toUpperCase();
+
+    if (is_blocked(ssid) || is_blocked(mac_str)){
+      out = "";
+      Serial.print("BLOCK: ");
+      Serial.print(ssid);
+      Serial.print(" / ");
+      Serial.println(mac_str);
+      wifi_block_at = millis();
+      return out;
+    }
 
     unsigned char mac_bytes[6];
     int values[6];

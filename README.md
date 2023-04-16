@@ -53,6 +53,8 @@ If you have upload issues, try lowering the upload speed. Some users also report
 
 Please ensure you have a working micro SD card inserted which is formatted to FAT32. The Wardriver will not boot without one.
 
+Add the [GSM cell towers database](https://wardriver.uk/gsm_location_3) to the SD card if you want your wardriver to be able to determine its location in areas with no GPS.
+
 When you first boot your Wardriver after flashing, it should create a WiFi network which you can connect to using a smartphone. The network name and password are both ```wardriver.uk``` by default.
 
 Upon connecting, please visit ```http://192.168.4.1/``` in a web browser.

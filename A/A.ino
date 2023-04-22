@@ -201,7 +201,7 @@ void boot_config(){
               if (buff.indexOf("GET / HTTP") > -1) {
                 Serial.println("Sending FTS homepage");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
-                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1><h2>First time setup</h2>");
+                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk Rev3 by Joseph Hewitt</h1><h2>First time setup</h2>");
                 client.print("Please provide the credentials of your WiFi network to get started.<br>");
                 if (n > 0){
                   client.println("<script>function ssid_selected(obj){");
@@ -245,7 +245,7 @@ void boot_config(){
               if (buff.indexOf("GET /step2 HTTP") > -1){
                 Serial.println("Starting step2");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
-                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1><h2>Fallback network setup</h2>");
+                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk Rev3 by Joseph Hewitt</h1><h2>Fallback network setup</h2>");
                 client.print("If your wardriver is unable to connect to your main network it will create a network which your device can join. Please provide some credentials for this fallback network.<br>");
                 client.print("<form method=\"get\" action=\"/fbwifi\">SSID:<input type=\"text\" name=\"ssid\" id=\"ssid\"><br>PSK:<input type=\"password\" name=\"psk\" id=\"psk\"><br><input type=\"submit\" value=\"Submit\"></form>");
                 client.print("<a href=\"/fbwifi?ssid=&psk=\">Continue without fallback network</a>");
@@ -419,7 +419,7 @@ void boot_config(){
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>Portable Wardriver Rev3 by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk Rev3 by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
                     client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
@@ -719,7 +719,7 @@ void setup() {
     filename = filename + ".csv";
     Serial.println(filename);
     filewriter = SD.open(filename, FILE_APPEND);
-    filewriter.print("WigleWifi-1.4,appRelease=" + VERSION + ",model=Portable Wardriver Rev3 ESP32,release=1.0.0,device=Portable Wardriver Rev3 ESP32,display=i2c LCD,board=Portable Wardriver Rev3 ESP32,brand=JHewitt\nMAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n");
+    filewriter.print("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk Rev3 ESP32,release=1.0.0,device=wardriver.uk Rev3 ESP32,display=i2c LCD,board=wardriver.uk Rev3 ESP32,brand=JHewitt\nMAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n");
     filewriter.flush();
     
     clear_display();

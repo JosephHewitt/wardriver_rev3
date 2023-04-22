@@ -1,9 +1,9 @@
 
-# Portable Wardriver Rev3
+# wardriver.uk Rev3
 
 ## Introduction
 
-This repository is for the 3rd revision of the Portable Wardriver created by [Joseph Hewitt](https://twitter.com/jhewitt_net). The Portable Wardriver scans for nearby WiFi networks and Bluetooth devices and logs information about them to a CSV file which can be uploaded to [Wigle.net](https://wigle.net). A fully assembled Wardriver features 2 ESP32 modules, GPS, a SIM800L GSM module, an i2c LCD, a DS18B20 temperature sensor, and an SPI micro SD card reader/writer.
+This repository is for the 3rd revision of the wardriver.uk created by [Joseph Hewitt](https://twitter.com/jhewitt_net). The wardriver.uk scans for nearby WiFi networks and Bluetooth devices and logs information about them to a CSV file which can be uploaded to [Wigle.net](https://wigle.net). A fully assembled Wardriver features 2 ESP32 modules, GPS, a SIM800L GSM module, an i2c LCD, a DS18B20 temperature sensor, and an SPI micro SD card reader/writer.
 
 The main code is split up into 2 separate files (A and B) for the 2 different ESP32 boards within the Wardriver.
 
@@ -15,7 +15,7 @@ The `main` branch of this project is the testing/alpha branch; you should only u
 
 ## Flashing
 
-The Portable Wardriver uses 2 generic ESP32-DevKitC V4 development boards with an ESP32-WROOM-32U chip each. I recommend flashing your ESP32 boards with the Arduino IDE. In order for this to work, you will need to add the following URL to your "Additional Boards Manager URLs" list in the Arduino IDE:
+The wardriver.uk uses 2 generic ESP32-DevKitC V4 development boards with an ESP32-WROOM-32U chip each. I recommend flashing your ESP32 boards with the Arduino IDE. In order for this to work, you will need to add the following URL to your "Additional Boards Manager URLs" list in the Arduino IDE:
 ```https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json```
 
 You can edit this list by opening the Arduino IDE preferences with ```File -> Preferences```

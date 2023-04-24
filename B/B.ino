@@ -210,18 +210,24 @@ void setup() {
       0); /* Core where the task should run */
 
   Serial.println("Started");
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
-      Serial.println(F("SSD1306 allocation failed (this is completely okay)"));
+  if (!temperature_sensor_ok){
+    //If there's no temperature sensor, attempt to put a warning on the LCD.
+    //This is side B so there should be no LCD. This should only be visible if side A is flashed with this code.
+    //The display.begin() line kills the DS18B20 communication (bug), hence why we check for the sensor.
+    //Side A does not have a DS18B20, so if we detect one then we clearly aren't running on A and the warning isn't needed.
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
+        Serial.println(F("SSD1306 allocation failed (this is completely okay)"));
+    }
+    display.setRotation(2);
+    display.clearDisplay();
+    display.setTextSize(1);      // Normal 1:1 pixel scale
+    display.setTextColor(WHITE); // Draw white text
+    display.setCursor(0, 0);     // Start at top-left corner
+    display.cp437(true);         // Use full 256 char 'Code Page 437' font
+    display.println("SIDE B CODE RUNNING ON SIDE A?");
+    display.println("Check documentation @ wardriver.uk");
+    display.display();
   }
-  display.setRotation(2);
-  display.clearDisplay();
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 0);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
-  display.println("SIDE B CODE RUNNING ON SIDE A?");
-  display.println("Check documentation @ wardriver.uk");
-  display.display();
 }
 
 unsigned long last_sim_request;

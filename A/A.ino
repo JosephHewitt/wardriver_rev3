@@ -446,7 +446,7 @@ void boot_config(){
                         client.print("</a></td><td>");
                         client.print(entry.size()/1024);
                         client.print(" kb</td><td>");
-                        client.print(get_latest_datetime(filename));
+                        client.print(get_latest_datetime(filename, false));
                         client.print("</td>");
                         client.print("<td>");
                         client.print("<a href=\"/delete?fn=");
@@ -521,6 +521,8 @@ void boot_config(){
                       client.println("Content-type: text/csv");
                       Serial.println("Sending file");
                       client.print("Content-Disposition: attachment; filename=\"");
+                      client.print(get_latest_datetime(filename, true));
+                      client.print("_");
                       client.print(chip_id);
                       client.print("_");
                       client.print(filename);
@@ -1408,7 +1410,7 @@ String security_int_to_string(int security_type){
   return authtype;
 }
 
-String get_latest_datetime(String filename){
+String get_latest_datetime(String filename, boolean date_only){
   //Provide a filename to get the highest datetime from that Wigle CSV file on the SD card.
   Serial.print("Getting latest dt from ");
   Serial.println(filename);
@@ -1431,6 +1433,13 @@ String get_latest_datetime(String filename){
           String dt = buff.substring(startpos+2,endpos);
           Serial.print("Got: ");
           Serial.println(dt);
+          if (date_only){
+            int spacepos = dt.indexOf(" ");
+            String new_dt = dt.substring(0,spacepos);
+            dt = new_dt;
+            Serial.print("Stripped to: ");
+            Serial.println(dt);
+          }
           return dt;
         } 
       }

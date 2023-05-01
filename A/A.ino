@@ -110,6 +110,13 @@ TaskHandle_t primary_scan_loop_handle;
 
 boolean b_working = false; //Set to true when we receive some valid data from side B.
 
+#define DEVICE_UNKNOWN 254
+#define DEVICE_CUSTOM  0
+#define DEVICE_REV3    1
+#define DEVICE_REV3_5  2
+#define DEVICE_REV4    3
+byte DEVICE_TYPE = DEVICE_UNKNOWN;
+
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
   WiFi.mode(WIFI_STA);
@@ -130,8 +137,12 @@ void boot_config(){
   bool firstrun = preferences.getBool("first", true);
   bool doreset = preferences.getBool("reset", false);
   bootcount = preferences.getULong("bootcount", 0);
-
+  
   Serial.println("Loaded variables");
+
+  DEVICE_TYPE = preferences.getShort("model", DEVICE_UNKNOWN);
+  DEVICE_TYPE = identify_model();
+  preferences.putShort("model", DEVICE_TYPE);
   
   if (doreset){
     Serial.println("resetting");
@@ -201,7 +212,7 @@ void boot_config(){
               if (buff.indexOf("GET / HTTP") > -1) {
                 Serial.println("Sending FTS homepage");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
-                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk Rev3 by Joseph Hewitt</h1><h2>First time setup</h2>");
+                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>First time setup</h2>");
                 client.print("Please provide the credentials of your WiFi network to get started.<br>");
                 if (n > 0){
                   client.println("<script>function ssid_selected(obj){");
@@ -245,7 +256,7 @@ void boot_config(){
               if (buff.indexOf("GET /step2 HTTP") > -1){
                 Serial.println("Starting step2");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
-                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk Rev3 by Joseph Hewitt</h1><h2>Fallback network setup</h2>");
+                client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>Fallback network setup</h2>");
                 client.print("If your wardriver is unable to connect to your main network it will create a network which your device can join. Please provide some credentials for this fallback network.<br>");
                 client.print("<form method=\"get\" action=\"/fbwifi\">SSID:<input type=\"text\" name=\"ssid\" id=\"ssid\"><br>PSK:<input type=\"password\" name=\"psk\" id=\"psk\"><br><input type=\"submit\" value=\"Submit\"></form>");
                 client.print("<a href=\"/fbwifi?ssid=&psk=\">Continue without fallback network</a>");
@@ -374,6 +385,7 @@ void boot_config(){
         }
         display.print((disconnectat - millis())/1000);
         display.println("s until boot");
+        display.print(device_type_string());
         display.display();
         
         if (millis() > disconnectat){
@@ -419,7 +431,7 @@ void boot_config(){
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk Rev3 by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
                     client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
@@ -561,6 +573,8 @@ void boot_config(){
               }
               display.print((disconnectat - millis())/1000);
               display.println("s until boot");
+              display.print(device_type_string());
+              display.display();
             }
           } //while client connected
         } //if client
@@ -680,6 +694,9 @@ void setup() {
     
     boot_config();
     setup_wifi();
+
+    Serial.print("This device: ");
+    Serial.println(device_type_string());
     
     filewriter.print(", bc=");
     filewriter.print(bootcount);
@@ -725,7 +742,7 @@ void setup() {
     filename = filename + ".csv";
     Serial.println(filename);
     filewriter = SD.open(filename, FILE_APPEND);
-    filewriter.print("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk Rev3 ESP32,release=1.0.0,device=wardriver.uk Rev3 ESP32,display=i2c LCD,board=wardriver.uk Rev3 ESP32,brand=JHewitt\nMAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n");
+    filewriter.print("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk " + device_type_string() + ",release=1.0.0,device=wardriver.uk " + device_type_string() + ",display=i2c LCD,board=wardriver.uk " + device_type_string() + ",brand=JHewitt\nMAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n");
     filewriter.flush();
     
     clear_display();
@@ -1674,4 +1691,90 @@ struct coordinates gsm_get_current_position(){
   }
 
   return toreturn;
+}
+
+String device_type_string(){
+  String ret = "";
+  switch (DEVICE_TYPE){
+    case DEVICE_REV3:
+      ret = "rev3";
+      break;
+      
+    case DEVICE_REV3_5:
+      ret = "rev3 5GHz";
+      break;
+
+    case DEVICE_REV4:
+      ret = "rev4";
+      break;
+
+    case DEVICE_CUSTOM:
+      ret = "generic";
+      break;
+
+    default:
+      ret = "generic";
+  }
+  
+  return ret;
+}
+
+byte identify_model(){
+  //Block until we know for sure what hardware model this is. Can take a while so cache the response.
+  //Return a byte indicating the model, such as DEVICE_REV3.
+  //Only call *before* the main loops start, otherwise multiple threads could be trying to access the serial.
+
+  if (DEVICE_TYPE != DEVICE_UNKNOWN){
+    //We already know.
+    Serial.print("Device already identified as ");
+    Serial.println(device_type_string());
+    return DEVICE_TYPE;
+  }
+  
+  Serial.println("Identifying hardware..");
+  
+  //TODO: For models without "side B" serial, detect their respective bus here and do an immediate return.
+
+  //For anything which is rev 3-ish, listen to the "side B" serial for a while.
+  //Timeout after a while in case "side B" is dead/missing, it's technically optional.
+  int i = 0;
+  String buff = "";
+  int bufflen = 0;
+  while (i < 10000){
+    if (Serial1.available()){
+      char c = Serial1.read();
+      if (c == '\n' || c == '\r'){
+        //Handle buff.
+        if (buff.indexOf("BLC,") > -1){
+          Serial.println("Identified Rev3 (cm)");
+          return DEVICE_REV3;
+        }
+        if (buff.indexOf("REV3!") > -1){
+          Serial.println("Identified Rev3");
+          return DEVICE_REV3;
+        }
+        if (buff.indexOf("5GHz,") > -1){
+          Serial.println("Identified Rev3 5Ghz (cm)");
+          return DEVICE_REV3_5;
+        }
+        if (buff.indexOf("!REV3.5") > -1){
+          Serial.println("Identified Rev3 5Ghz");
+          return DEVICE_REV3_5;
+        }
+
+        buff = "";
+      }
+      buff.concat(c);
+      bufflen++;
+      if (bufflen > 70){
+        bufflen = 0;
+        buff = "";
+      }
+      
+    }
+    delay(1);
+    i++;
+  }
+  Serial.println("Failed to identify hardware");
+  return DEVICE_UNKNOWN;
 }

@@ -1402,9 +1402,14 @@ String security_int_to_string(int security_type){
 
     case WIFI_AUTH_WPA2_WPA3_PSK:
       authtype = "[WPA2_WPA3_PSK]";
-  
+      break;
+
+    case WIFI_AUTH_WAPI_PSK:
+      authtype = "[WAPI_PSK]";
+      break;
+        
     default:
-      authtype = "";
+      authtype = "[UNDEFINED]";
   }
 
   return authtype;

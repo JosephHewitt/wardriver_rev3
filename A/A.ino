@@ -410,12 +410,12 @@ void boot_config(){
                   Serial.println("End of message");
                   Serial.println(buff);
                   client.println("HTTP/1.1 200 OK");
-                  client.println("Content-type: text/html");
                   client.println("Connection: close");
                   
                   disconnectat = millis() + web_timeout;
     
                   if (buff.indexOf("GET / HTTP") > -1) {
+                    client.println("Content-type: text/html");
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
@@ -464,6 +464,7 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /time?") > -1){
+                    client.println("Content-type: text/html");
                     Serial.println("Got time from browser");
                     int startpos = buff.indexOf("?v=")+3;
                     int endpos = buff.indexOf(" ",startpos);
@@ -489,6 +490,7 @@ void boot_config(){
                     String filename = buff.substring(startpos,endpos);
                     Serial.println(filename);
                     SD.remove(filename);
+                    client.println("Content-type: text/html");
                     client.println();
                     client.print("<h1>Deleted ");
                     client.print(filename);
@@ -506,6 +508,7 @@ void boot_config(){
 
                     File reader = SD.open(filename, FILE_READ);
                     if (!reader){
+                      client.println("Content-type: text/html");
                       client.println();
                       client.print("Invalid file");
                       client.flush();
@@ -515,6 +518,7 @@ void boot_config(){
                       break;
                     }
                     if (reader){
+                      client.println("Content-type: text/csv");
                       Serial.println("Sending file");
                       client.print("Content-Disposition: attachment; filename=\"");
                       client.print(chip_id);

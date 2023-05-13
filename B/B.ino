@@ -163,7 +163,7 @@ void setup() {
   }
 
   Serial1.begin(115200,SERIAL_8N1,27,14); //ESP A, pins 27/14
-  Serial1.println("STARTING");
+  Serial1.println("REV3!");
 
   Serial2.begin(9600); //SIM800L
   delay(50);
@@ -210,6 +210,7 @@ void setup() {
       0); /* Core where the task should run */
 
   Serial.println("Started");
+  Serial1.println("REV3!");
   if (!temperature_sensor_ok){
     //If there's no temperature sensor, attempt to put a warning on the LCD.
     //This is side B so there should be no LCD. This should only be visible if side A is flashed with this code.

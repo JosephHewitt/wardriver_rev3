@@ -439,7 +439,7 @@ void boot_config(){
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1>Note: \"DEL\" will immediately delete the file without confirmation</head><table>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head><table>");
                     client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
@@ -504,6 +504,30 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /delete?") > -1) {
+                    Serial.println("File delete pre-request");
+                    int startpos = buff.indexOf("?fn=")+4;
+                    int endpos = buff.indexOf(" ",startpos);
+                    String filename = buff.substring(startpos,endpos);
+                    Serial.println(filename);
+                    if (!SD.exists(filename)){
+                      Serial.println("file does not exist");
+                      client.println("Content-type: text/html");
+                      client.println();
+                      client.print("<h1>File not found </h1>");
+                      client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    } else {
+                      client.println("Content-type: text/html");
+                      client.println();
+                      client.print("<style>html,td,th{font-size:21px;text-align:center;padding:20px}</style><html>");
+                      client.print("<h1>Confirm delete of ");
+                      client.print(filename);
+                      client.print("<br><a href=\"/\">Cancel</a></h1><br><h2><a href=\"/confirmdelete?fn=");
+                      client.print(filename);
+                      client.print("\">DELETE</a></h2></html>");
+                    }
+                  }
+
+                  if (buff.indexOf("GET /confirmdelete?") > -1) {
                     Serial.println("File delete request");
                     int startpos = buff.indexOf("?fn=")+4;
                     int endpos = buff.indexOf(" ",startpos);

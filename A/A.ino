@@ -110,6 +110,8 @@ TaskHandle_t primary_scan_loop_handle;
 
 boolean b_working = false; //Set to true when we receive some valid data from side B.
 
+#define HTTP_TIMEOUT_MS 750
+
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
   WiFi.mode(WIFI_STA);
@@ -222,6 +224,7 @@ void boot_config(){
                 client.print("<a href=\"/wifi?ssid=&psk=\">Continue without network</a>");
                 client.print("<br><hr>Additional help is available at http://wardriver.uk<br>v");
                 client.print(VERSION);
+                client.print("</html>");
               }
 
               if (buff.indexOf("GET /wifi?") > -1){
@@ -251,6 +254,7 @@ void boot_config(){
                 client.print("<a href=\"/fbwifi?ssid=&psk=\">Continue without fallback network</a>");
                 client.print("<br><hr>Additional help is available at http://wardriver.uk<br>v");
                 client.print(VERSION);
+                client.print("</html>");
               }
 
               if (buff.indexOf("GET /fbwifi?") > -1){
@@ -387,6 +391,7 @@ void boot_config(){
         }
         WiFiClient client = server.available();
         if (client){
+          unsigned long client_last_byte_at = millis();
           Serial.println("client connected, awaiting request");
           clear_display();
           display.println("Client connected");
@@ -394,7 +399,12 @@ void boot_config(){
           display.display();
           boolean first_byte = true;
           while (client.connected()){
+            if (millis() - client_last_byte_at > HTTP_TIMEOUT_MS){
+              Serial.println("HTTP client timeout, stopping");
+              client.stop();
+            }
             if (client.available()){
+              client_last_byte_at = millis();
               if (first_byte){
                 first_byte = false;
                 Serial.println("Got first byte of request");
@@ -461,6 +471,7 @@ void boot_config(){
                     client.println(VERSION);
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null);</script>");
+                    client.print("</html>");
                   }
 
                   if (buff.indexOf("GET /time?") > -1){

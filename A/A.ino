@@ -117,6 +117,8 @@ boolean b_working = false; //Set to true when we receive some valid data from si
 #define DEVICE_REV4    3
 byte DEVICE_TYPE = DEVICE_UNKNOWN;
 
+#define HTTP_TIMEOUT_MS 750
+
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
   WiFi.mode(WIFI_STA);
@@ -399,6 +401,7 @@ void boot_config(){
         }
         WiFiClient client = server.available();
         if (client){
+          unsigned long client_last_byte_at = millis();
           Serial.println("client connected, awaiting request");
           clear_display();
           display.println("Client connected");
@@ -406,7 +409,12 @@ void boot_config(){
           display.display();
           boolean first_byte = true;
           while (client.connected()){
+            if (millis() - client_last_byte_at > HTTP_TIMEOUT_MS){
+              Serial.println("HTTP client timeout, stopping");
+              client.stop();
+            }
             if (client.available()){
+              client_last_byte_at = millis();
               if (first_byte){
                 first_byte = false;
                 Serial.println("Got first byte of request");

@@ -1719,7 +1719,7 @@ struct coordinates gsm_get_current_position(){
   if (max_accuracy > 0){
     toreturn.lat = lat;
     toreturn.lon = lon;
-    toreturn.acc = 1500 + (max_accuracy*2);
+    toreturn.acc = max_accuracy;
   }
 
   return toreturn;

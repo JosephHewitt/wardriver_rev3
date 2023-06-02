@@ -135,6 +135,8 @@ void boot_config(){
   //Load configuration variables and perform first time setup if required.
   Serial.println("Setting/loading boot config..");
 
+  get_config_option("test");
+
   preferences.begin("wardriver", false);
   bool firstrun = preferences.getBool("first", true);
   bool doreset = preferences.getBool("reset", false);
@@ -1809,4 +1811,65 @@ byte identify_model(){
   }
   Serial.println("Failed to identify hardware");
   return DEVICE_UNKNOWN;
+}
+
+String get_config_option(String key){
+  #define max_line_len 64
+  
+  char linebuf[max_line_len];
+  File filereader = SD.open("/cfg.txt", FILE_READ);
+  if (!filereader){
+    Serial.println("cfg.txt could not be opened");
+    return "";
+  }
+
+  //Unlikely to be needed but a nice safety net.
+  filereader.setTimeout(500);
+
+  while (filereader.available()){
+    int buflen = filereader.readBytesUntil('\n', linebuf, max_line_len-1);
+    if (buflen < 1){
+      Serial.println("Failed to read cfg line");
+      continue;
+    }
+    
+    String cfgkey = "";
+    String value = "";
+    bool reading_key = true;
+    
+    for (int i = 0; i < buflen; i++){
+      if (linebuf[i] == '='){
+        reading_key = false;
+        continue;
+      }
+      if (linebuf[i] == '\n' || linebuf[i] == '\r'){
+        break;
+      }
+      if (reading_key){
+        cfgkey.concat(linebuf[i]);
+      } else {
+        value.concat(linebuf[i]);
+      }
+    }
+    Serial.print("cfgread: ");
+    Serial.print(cfgkey);
+    Serial.print(" eq ");
+    Serial.println(value);
+
+    if (cfgkey == key){
+      Serial.print("cfg got: ");
+      Serial.print(cfgkey);
+      Serial.print(" equal to ");
+      Serial.println(value);
+    
+      return value;
+    }
+    
+  }
+  
+  Serial.print("Did not find ");
+  Serial.println(key);
+  
+  return "";
+  
 }

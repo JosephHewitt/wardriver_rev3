@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.1.0rc1";
+const String VERSION = "1.2.0b1";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -19,11 +19,6 @@ const String VERSION = "1.1.0rc1";
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-#define gps_allow_stale_time 60000 //ms to allow stale gps data for when lock lost.
-
-unsigned long web_timeout = 60000; //ms to spend hosting the web interface before booting.
-
 
 //These variables are used for buffering/caching GPS data.
 char nmeaBuffer[100];
@@ -119,6 +114,14 @@ byte DEVICE_TYPE = DEVICE_UNKNOWN;
 
 #define HTTP_TIMEOUT_MS 750
 
+//Change these in cfg.txt instead of editing this source code.
+int gps_baud_rate = 9600;
+boolean rotate_display = false;
+boolean block_resets = false;
+boolean block_reconfigure = false;
+int web_timeout = 60000; //ms to spend hosting the web interface before booting.
+int gps_allow_stale_time = 60000;
+
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
   WiFi.mode(WIFI_STA);
@@ -131,15 +134,53 @@ void clear_display(){
   display.setCursor(0, 0);
 }
 
+int get_config_int(String key, int def=0){
+  String res = get_config_option(key);
+  if (res == ""){
+    return def;
+  }
+  return res.toInt();
+}
+
+boolean get_config_bool(String key, boolean def=false){
+  String res = get_config_option(key);
+  if (res == "true" || res == "yes"){
+    return true;
+  }
+  if (res == "false" || res == "no"){
+    return false;
+  }
+  return def;
+}
+
+String get_config_string(String key, String def=""){
+  String res = get_config_option(key);
+  if (res == ""){
+    return def;
+  }
+  return res;
+}
+
 void boot_config(){
   //Load configuration variables and perform first time setup if required.
   Serial.println("Setting/loading boot config..");
 
-  get_config_option("test");
+  gps_baud_rate = get_config_int("gps_baud_rate", gps_baud_rate);
+  rotate_display = get_config_bool("rotate_display", rotate_display);
+  block_resets = get_config_bool("block_resets", block_resets);
+  block_reconfigure = get_config_bool("block_reconfigure", block_reconfigure);
+  web_timeout = get_config_int("web_timeout", web_timeout);
+  gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
 
   preferences.begin("wardriver", false);
   bool firstrun = preferences.getBool("first", true);
+  if (block_reconfigure){
+    firstrun = false;
+  }
   bool doreset = preferences.getBool("reset", false);
+  if (block_resets){
+    doreset = false;
+  }
   bootcount = preferences.getULong("bootcount", 0);
   
   Serial.println("Loaded variables");
@@ -158,7 +199,7 @@ void boot_config(){
     firstrun = true;
   }
 
-  if (!firstrun){
+  if (!firstrun && !block_resets){
     preferences.putBool("reset", true);
     preferences.end();
     clear_display();
@@ -322,8 +363,12 @@ void boot_config(){
 
   String con_ssid = GP_urldecode(preferences.getString("ssid",""));
   String con_psk = GP_urldecode(preferences.getString("psk",""));
+  con_ssid = get_config_string("con_ssid", con_ssid);
+  con_psk = get_config_string("con_psk", con_psk);
   String fb_ssid = GP_urldecode(preferences.getString("fbssid",""));
   String fb_psk = GP_urldecode(preferences.getString("fbpsk",""));
+  fb_ssid = get_config_string("fb_ssid", fb_ssid);
+  fb_psk = get_config_string("fb_psk", fb_psk);
   boolean created_network = false; //Set to true automatically when the fallback network is created.
 
   if (con_ssid != "" || fb_ssid != ""){
@@ -638,12 +683,15 @@ void setup() {
     default_ssid.remove(default_ssid.length()-3);
     
     Serial1.begin(115200,SERIAL_8N1,27,14);
-    Serial2.begin(9600);
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
       Serial.println(F("SSD1306 allocation failed"));
     }
-    display.setRotation(2);
+    if (!rotate_display){
+      display.setRotation(2);
+    } else {
+      display.setRotation(0);
+    }
     display.clearDisplay();
     display.setTextSize(1);      // Normal 1:1 pixel scale
     display.setTextColor(WHITE); // Draw white text
@@ -728,6 +776,8 @@ void setup() {
     
     boot_config();
     setup_wifi();
+
+    Serial2.begin(gps_baud_rate);
 
     Serial.print("This device: ");
     Serial.println(device_type_string());

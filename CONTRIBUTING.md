@@ -28,5 +28,6 @@ Try to keep your pull request scoped to a single change. Adding 3 new features s
 ## Other
 
 When adding 3rd party dependencies, please ensure they can be downloaded from the Arduino library manager. Please also keep the number of new dependencies to a minimum.
+You must add the new library to `libraries.txt` so our automated build service knows what to install. It should be in the format of `libraryname@1.1.1` and a specific version should be used.
 
 Feel free to ask questions on the issues tracker if you would like to contribute but are unsure about how.

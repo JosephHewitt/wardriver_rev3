@@ -13,6 +13,10 @@ For information about the Wardriver hardware, please see [the official wiki](htt
 
 The `main` branch of this project is the testing/alpha branch; you should only use it if you are contributing code or want to help debug the latest features. Please use the `Releases` tab on the right to download stable versions.
 
+The `main` branch is tesed for issues on every pull request, see the status of this test below:
+
+![CI Status Badge](https://github.com/JosephHewitt/wardriver_rev3/actions/workflows/arduinobuild.yml/badge.svg)
+
 ## Flashing
 
 The wardriver.uk uses 2 generic ESP32-DevKitC V4 development boards with an ESP32-WROOM-32U chip each. I recommend flashing your ESP32 boards with the Arduino IDE. In order for this to work, you will need to add the following URL to your "Additional Boards Manager URLs" list in the Arduino IDE:
@@ -110,6 +114,8 @@ After the first time setup is complete, plugging your Wardriver into power will 
 If you wish to remove a file from the SD card, click the "DEL" link to right of the filename. You will be prompted to confirm the delete action.
 
 If you do not access or interact with the web interface after around 1 minute, the Wardriver will boot normally and start collecting data until you remove the power.
+
+To prevent certain networks from being logged, you can add a file called `bl.txt` to the root of your wardriver SD card using a computer. This file should contain a list of SSIDs and/or MAC addresses, one per line, which should not be logged. This file is case sensitive and MAC addresses must only be in upper-case. This list is limited to a maximum of 20 entries.
 
 ### Uploading to Wigle
 

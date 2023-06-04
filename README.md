@@ -105,7 +105,9 @@ This **does not** delete any collected data -- it simply erases the currently co
 
 ## Collecting and Uploading Data
 
-After the first time setup is complete, plugging your Wardriver into power will cause it to boot normally. If you are in range of your configured WiFi network, it will connect and display its IP address on the LCD. By visiting this IP address in a web browser, you are able to download all of the data you have collected so far. Please ensure your phone/PC is on the same WiFi network as your Wardriver. Simply click on the name of the file you wish to download and your device should download a file with a name in this format: `ID_wd3-NUM.csv` where `ID` corresponds to the unique hardware ID of your wardriver and `NUM` is the incremental ID of your wardriving session.
+After the first time setup is complete, plugging your Wardriver into power will cause it to boot normally. If you are in range of your configured WiFi network, it will connect and display its IP address on the LCD. By visiting this IP address in a web browser, you are able to download all of the data you have collected so far. Please ensure your phone/PC is on the same WiFi network as your Wardriver. Simply click on the name of the file you wish to download and your device should download a file with a name in this format: `YYYY-MM-DD_ID_wd3__NUM.csv` where `YYYY-MM-DD` is the date of the file, `ID` corresponds to the unique hardware ID of your wardriver, and `NUM` is the incremental ID of your wardriving session.
+
+If you wish to remove a file from the SD card, click the "DEL" link to right of the filename. You will be prompted to confirm the delete action.
 
 If you do not access or interact with the web interface after around 1 minute, the Wardriver will boot normally and start collecting data until you remove the power.
 
@@ -115,6 +117,6 @@ You may wish to register or login to Wigle before uploading files - this will al
 
 - Visit [Wigle.net](https://wigle.net/) and press the "Uploads" button in the top toolbar.
 - Press the yellow "UPLOAD A FILE" button.
-- Press the "Browse" button near the bottom left of the popup.
-- Choose the file which you downloaded from your Wardriver (A CSV file in this format: `ID_wd3-NUM.csv`)
+- Press the "Browse" or "Choose File" button near the bottom left of the popup.
+- Choose the file which you downloaded from your Wardriver (A CSV file in this format: `YYYY-MM-DD_ID_wd3__NUM.csv`)
 - Press "Send" at the bottom right of the popup.

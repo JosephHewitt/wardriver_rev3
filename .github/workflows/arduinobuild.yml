@@ -40,9 +40,10 @@ jobs:
           export ARDUINO_DIRECTORIES_USER=~/builder/user/
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s 0.33.0
           bin/arduino-cli core update-index
+          ls -lh
           
-          while read p; do bin/arduino-cli core install "$p" ; done <boards.txt
-          while read p; do bin/arduino-cli lib install "$p" ; done <libraries.txt
+          while read p; do bin/arduino-cli core install "$p"; echo "$p" ; done <boards.txt
+          while read p; do bin/arduino-cli lib install "$p"; echo "$p" ; done <libraries.txt
           
           find . -type f -name "*.ino" > /tmp/tobuild.txt
           set -o pipefail

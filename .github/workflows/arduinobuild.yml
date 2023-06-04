@@ -1,0 +1,81 @@
+name: CI
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - '*'
+  pull_request:
+    types: [ opened ]
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Preparation
+        run: |
+          BOARDS_HASH=$(shasum boards.txt | cut -d " " -f 1)
+          LIBRARIES_HASH=$(shasum libraries.txt | cut -d " " -f 1)
+          echo "cachehash=$BOARDS_HASH$LIBRARIES_HASH" >> $GITHUB_ENV
+      
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          key: "BUILDER_DIR-${{ env.cachehash }}"
+          path: |
+            ~/builder/
+
+      - name: Arduino CLI
+        run: |
+          export ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS=https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          export ARDUINO_DIRECTORIES_DATA=~/builder/
+          export ARDUINO_DIRECTORIES_DOWNLOADS=~/builder/staging/
+          export ARDUINO_DIRECTORIES_USER=~/builder/user/
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s 0.33.0
+          bin/arduino-cli core update-index
+          
+          while read p; do bin/arduino-cli core install "$p" ; done <boards.txt
+          while read p; do bin/arduino-cli lib install "$p" ; done <libraries.txt
+          
+          find . -type f -name "*.ino" > /tmp/tobuild.txt
+          set -o pipefail
+          while read p; do
+            echo "### Compilation of $p" >> /tmp/build.log;
+            echo -en "\n\n<pre>" >> /tmp/build.log;
+            echo "Compile: $p";
+            bin/arduino-cli compile --clean --no-color --board-options PartitionScheme=min_spiffs --fqbn=esp32:esp32:esp32 -e "$p" 2>&1 | tee -a /tmp/build.log;
+            echo -en "</pre>\n\n" >> /tmp/build.log;
+          done </tmp/tobuild.txt
+          BOOTAPP=$(find ~/builder/ -name boot_app0.bin)
+          echo "Found boot_app0.bin at $BOOTAPP"
+          
+          cp $BOOTAPP .
+          zip -r /tmp/build.zip . -x *git* -x *arduino15* -x *github* -x arduino-cli
+          
+      - name: Report
+        if: always()
+        run: |
+          echo "Running final reporting.."
+          cat /tmp/build.log >> $GITHUB_STEP_SUMMARY
+          
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Binaries
+          path: |
+            /tmp/build.zip
+            
+      - name: Upload binaries to release
+        if: github.ref_type == 'tag'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: /tmp/build.zip
+          

@@ -49,6 +49,36 @@ To upload code to your ESP32 boards, please use the following configuration in t
 
 If you have upload issues, try lowering the upload speed. Some users also report having to hold the "boot" button on the ESP32 board after connecting it to their PC before pressing the upload button in the Arduino IDE.
 
+## Flashing (from binary) [BETA]
+
+Instead of compiling the project yourself, it is possible to flash our pre-compiled binaries. This method works on all major operating systems.
+
+This method was released very recently and has not been fully tested so some issues are likely. For now **the previous method (see above) is recommended**.
+
+This method requires [Python 3.7](https://www.python.org/downloads/) (or newer) and [esptool 4.5](https://docs.espressif.com/projects/esptool/en/latest/esp32/installation.html) (or newer) to be installed on your computer. After installing Python, it is highly recommended to install esptool with `pip install esptool` to ensure you have a modern version. You should be able to run `esptool.py` in your Terminal / Command Prompt.
+
+Once installed, download the `build.zip` file from the release you want to install (see the releases tab on the right and look inside the `Assets` dropdown).
+
+Unzip the downloaded file into a new folder somewhere easily accessible. Open this folder in your Terminal / Command Prompt (eg, run `cd path/to/folder`).
+
+To flash A, connect the ESP32 A board to your PC and run the following command:
+
+`esptool.py --chip esp32 --port COM9 --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size 4MB 0x1000 A/build/esp32.esp32.esp32/A.ino.bootloader.bin 0x8000 A/build/esp32.esp32.esp32/A.ino.partitions.bin 0xe000 boot_app0.bin 0x10000 A/build/esp32.esp32.esp32/A.ino.bin`
+
+**You need to replace `COM9` with the port of your ESP32, such as COM1 or /dev/ttyxx**. 
+
+To flash B, connect the ESP32 B board to your PC and run the following command:
+
+`esptool.py --chip esp32 --port COM9 --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size 4MB 0x1000 B/build/esp32.esp32.esp32/B.ino.bootloader.bin 0x8000 B/build/esp32.esp32.esp32/B.ino.partitions.bin 0xe000 boot_app0.bin 0x10000 B/build/esp32.esp32.esp32/B.ino.bin`
+
+**You need to replace `COM9` with the port of your ESP32, such as COM1 or /dev/tty.xx**
+
+On some ESP32 boards, it is necessary to hold the "boot" button when first connecting it to your PC.
+
+You may need to install drivers for the USB->UART bridge on the ESP32 board. This depends on your operating system, and type of board used.
+
+This method of installing is still very new so most releases do not yet have binaries available. You can also find them in the `Actions` tab (at the top) whenever the build process runs, but this is not recommended since these binaries are usually generated from alpha/testing code.
+
 ## First Time Setup
 
 Please ensure you have a working micro SD card inserted which is formatted to FAT32. The Wardriver will not boot without one.

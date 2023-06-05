@@ -5,7 +5,7 @@ on:
     tags:
       - '*'
   pull_request:
-    types: [ opened ]
+    types: [ opened, reopened, edited, ready_for_review, review_requested ]
 
   workflow_dispatch:
 
@@ -26,6 +26,7 @@ jobs:
           echo "cachehash=$BOARDS_HASH$LIBRARIES_HASH" >> $GITHUB_ENV
       
       - name: Cache
+        if: github.ref_type != 'tag'
         uses: actions/cache@v3
         with:
           key: "BUILDER_DIR-${{ env.cachehash }}"
@@ -38,14 +39,29 @@ jobs:
           export ARDUINO_DIRECTORIES_DATA=~/builder/
           export ARDUINO_DIRECTORIES_DOWNLOADS=~/builder/staging/
           export ARDUINO_DIRECTORIES_USER=~/builder/user/
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s 0.33.0
-          bin/arduino-cli core update-index
-          ls -lh
-          
-          while read p; do bin/arduino-cli core install "$p"; echo "$p" ; done <boards.txt
-          while read p; do bin/arduino-cli lib install "$p"; echo "$p" ; done <libraries.txt
-          
           find . -type f -name "*.ino" > /tmp/tobuild.txt
+          
+          mkdir -p ~/builder/
+          
+          FULLHASH=$(while read p; do shasum "$p"; done </tmp/tobuild.txt | shasum | cut -d " " -f 1)
+          SOURCE_HASH=$()
+          if [ -e ~/builder/source_hash.txt ] && [ $(cat ~/builder/source_hash.txt) == $FULLHASH ]; then
+            echo ".ino files have not changed since the last run.";
+            echo -en "### No code changes\n\nThe source code has not changed since last time. Please see the old pipeline results for compilation information." >> $GITHUB_STEP_SUMMARY;
+            exit 0;
+          fi
+          echo "$FULLHASH" > ~/builder/source_hash.txt
+          
+          
+          if [ ! -e bin/arduino-cli ]; then
+            echo "Downloading Arduino CLI"
+            curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s 0.33.0
+            bin/arduino-cli core update-index
+
+            while read p; do bin/arduino-cli core install "$p" ; done <boards.txt
+            while read p; do bin/arduino-cli lib install "$p" ; done <libraries.txt
+          fi
+          
           set -o pipefail
           while read p; do
             echo "### Compilation of $p" >> /tmp/build.log;
@@ -58,13 +74,22 @@ jobs:
           echo "Found boot_app0.bin at $BOOTAPP"
           
           cp $BOOTAPP .
+          
+          find . -type f -not -path '*/.*' -exec sha256sum {} \; | tee hashes.txt
+          
           zip -r /tmp/build.zip . -x *git* -x *arduino15* -x *github* -x arduino-cli
           
       - name: Report
         if: always()
         run: |
           echo "Running final reporting.."
-          cat /tmp/build.log >> $GITHUB_STEP_SUMMARY
+          if [ -e hashes.txt ]; then
+            echo -en "\n\n### SHA256 Binary Checksums\n\n" >> /tmp/build.log
+            grep --color=never -i ".ino.bin" hashes.txt >> /tmp/build.log
+          fi
+          if [ -e /tmp/build.log ]; then
+            cat /tmp/build.log >> $GITHUB_STEP_SUMMARY
+          fi
           
           
       - name: Upload artifacts

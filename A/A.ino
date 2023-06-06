@@ -160,6 +160,40 @@ static void print_hex(const char *title, const unsigned char buf[], size_t len)
     Serial.println();
 }
 
+String file_hash(String filename){
+  File reader = SD.open(filename, FILE_READ);
+  //Setup a hash context, and somewhere to keep the output.
+  unsigned char genhash[32];
+  byte bbuf[2] = {0x00, 0x00};
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  mbedtls_sha256_starts(&ctx, 0);
+                    
+  while (reader.available()){
+    byte c = reader.read();
+    bbuf[0] = c;
+    mbedtls_sha256_update(&ctx, bbuf, 1);
+    
+  }
+  mbedtls_sha256_finish(&ctx, genhash);
+  return hex_str(genhash, sizeof genhash);
+}
+
+String hex_str(const unsigned char buf[], size_t len)
+{
+    String outstr;
+    char outchr[6];
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] < 0xF) {
+            sprintf(outchr, "0%x", buf[i]);
+        } else {
+            sprintf(outchr, "%x", buf[i]);
+        }
+        outstr = outstr + outchr;
+    }
+    return outstr;
+}
+
 boolean get_config_bool(String key, boolean def=false){
   String res = get_config_option(key);
   if (res == "true" || res == "yes"){
@@ -548,6 +582,26 @@ void boot_config(){
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
                     //Also a snippet to force binary uploads instead of multipart.
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
+                  }
+
+                  if (buff.indexOf("GET /fwup") > -1){
+                    client.println("Content-type: text/html");
+                    client.println();
+                    Serial.println("Sending FW update page");
+                    client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head><table>");
+                    client.println("<tr><th>Filename</th><th>SHA256</th><th>Opt</th></tr>");
+                    client.flush();
+                    //In future lets iterate *.bin
+                    if (SD.exists("/A.bin")){
+                      String filehash = file_hash("/A.bin");
+                      client.println("<tr><td>A.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=A.bin\">Install</a></td></tr>");
+                    }
+                    if (SD.exists("/B.bin")){
+                      String filehash = file_hash("/B.bin");
+                      client.println("<tr><td>B.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=B.bin\">Install</a></td></tr>");
+                    }
+                    client.println("</tr>");
                   }
 
                   if (buff.indexOf("POST /fw") > -1){

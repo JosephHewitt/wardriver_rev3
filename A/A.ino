@@ -552,6 +552,23 @@ void boot_config(){
 
                   if (buff.indexOf("POST /fw") > -1){
                     Serial.println("Incoming firmware");
+                    int startpos = buff.indexOf("?n=")+3;
+                    int endpos = buff.indexOf(" ",startpos);
+                    String bin_filename = buff.substring(startpos,endpos);
+                    Serial.println(bin_filename);
+                    String newname = "/other.bin";
+                    if (bin_filename.startsWith("A")){
+                      newname = "/A.bin";
+                    }
+                    if (bin_filename.startsWith("B")){
+                      newname = "/B.bin";
+                    }
+
+                    Serial.println(newname);
+                    if (SD.exists(newname)){
+                      SD.remove(newname);
+                    }
+                    File binwriter = SD.open(newname, FILE_WRITE);
 
                     //Setup a hash context, and somewhere to keep the output.
                     unsigned char genhash[32];
@@ -564,6 +581,7 @@ void boot_config(){
                     while (1) {
                       if (client.available()){
                         byte c = client.read();
+                        binwriter.write(c);
                         bbuf[0] = c;
                         mbedtls_sha256_update(&ctx, bbuf, 1);
                         
@@ -573,6 +591,8 @@ void boot_config(){
                         Serial.println("Done");
                         mbedtls_sha256_finish(&ctx, genhash);
                         print_hex("HASHED", genhash, sizeof genhash);
+                        binwriter.flush();
+                        binwriter.close();
                         break;
                       }
                     } //Firmware update loop

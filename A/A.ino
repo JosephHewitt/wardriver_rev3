@@ -542,10 +542,12 @@ void boot_config(){
                       }
                     }
                     client.print("</table><br><hr>");
-                    client.print("<br>v");
+                    client.print("<input type=\"file\" id=\"file\" /><button id=\"read-file\">Read File</button>");
+                    client.print("<br><br>v");
                     client.println(VERSION);
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
-                    client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null);</script>");
+                    //Also a snippet to force binary uploads instead of multipart.
+                    client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
                   }
 
                   if (buff.indexOf("POST /fw") > -1){

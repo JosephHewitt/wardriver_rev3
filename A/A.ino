@@ -160,7 +160,7 @@ static void print_hex(const char *title, const unsigned char buf[], size_t len)
     Serial.println();
 }
 
-String file_hash(String filename){
+String file_hash(String filename, boolean update_lcd=true){
   File reader = SD.open(filename, FILE_READ);
   //Setup a hash context, and somewhere to keep the output.
   unsigned char genhash[32];
@@ -168,11 +168,25 @@ String file_hash(String filename){
   mbedtls_sha256_context ctx;
   mbedtls_sha256_init(&ctx);
   mbedtls_sha256_starts(&ctx, 0);
-                    
+
+  int i = 0;
+
   while (reader.available()){
     byte c = reader.read();
     bbuf[0] = c;
     mbedtls_sha256_update(&ctx, bbuf, 1);
+    i++;
+    if (i > 1800){
+      i = 0;
+      if (update_lcd){
+        clear_display();
+        display.println("Wardriver busy");
+        float percent = ((float)reader.position() / (float)reader.size()) * 100;
+        display.print(percent);
+        display.println("%");
+        display.display();
+      }
+    }
     
   }
   mbedtls_sha256_finish(&ctx, genhash);

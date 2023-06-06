@@ -11,6 +11,9 @@ const String VERSION = "1.2.0b1";
 #include <WiFi.h>
 #include <Preferences.h>
 #include <time.h>
+#include <Update.h>
+#include "mbedtls/sha256.h"
+#include "mbedtls/md.h"
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -140,6 +143,21 @@ int get_config_int(String key, int def=0){
     return def;
   }
   return res.toInt();
+}
+
+static void print_hex(const char *title, const unsigned char buf[], size_t len)
+{
+    Serial.printf("%s: ", title);
+
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] < 0xF) {
+            Serial.printf("0%x", buf[i]);
+        } else {
+            Serial.printf("%x", buf[i]);
+        }
+    }
+
+    Serial.println();
 }
 
 boolean get_config_bool(String key, boolean def=false){
@@ -528,6 +546,34 @@ void boot_config(){
                     client.println(VERSION);
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null);</script>");
+                  }
+
+                  if (buff.indexOf("POST /fw") > -1){
+                    Serial.println("Incoming firmware");
+
+                    //Setup a hash context, and somewhere to keep the output.
+                    unsigned char genhash[32];
+                    mbedtls_sha256_context ctx;
+                    mbedtls_sha256_init(&ctx);
+                    mbedtls_sha256_starts(&ctx, 0);
+
+                    unsigned long fw_last_byte = millis();
+                    byte bbuf[2] = {0x00, 0x00};
+                    while (1) {
+                      if (client.available()){
+                        byte c = client.read();
+                        bbuf[0] = c;
+                        mbedtls_sha256_update(&ctx, bbuf, 1);
+                        
+                        fw_last_byte = millis();
+                      }
+                      if (millis() - fw_last_byte > 4000){
+                        Serial.println("Done");
+                        mbedtls_sha256_finish(&ctx, genhash);
+                        print_hex("HASHED", genhash, sizeof genhash);
+                        break;
+                      }
+                    } //Firmware update loop
                   }
 
                   if (buff.indexOf("GET /time?") > -1){

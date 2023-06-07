@@ -146,7 +146,7 @@ int get_config_int(String key, int def=0){
   return res.toInt();
 }
 
-String file_hash(String filename, boolean update_lcd=true){
+String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wardriver busy"){
   File reader = SD.open(filename, FILE_READ);
   //Setup a hash context, and somewhere to keep the output.
   unsigned char genhash[32];
@@ -166,7 +166,7 @@ String file_hash(String filename, boolean update_lcd=true){
       i = 0;
       if (update_lcd){
         clear_display();
-        display.println("Wardriver busy");
+        display.println(lcd_prompt);
         float percent = ((float)reader.position() / (float)reader.size()) * 100;
         display.print(percent);
         display.println("%");
@@ -204,8 +204,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     return false;
   }
   if (expect_hash.length() > 0) {
-  Serial.println("Validating checksum");
-    if (expect_hash != file_hash(filepath)) {
+    Serial.println("Validating firmware");
+    if (expect_hash != file_hash(filepath, true, "Validating firmware")) {
       Serial.println("Local checksum mismatch");
       return false;
     }
@@ -235,13 +235,26 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       Update.write(binbuf,counter);
       counter = 0;
       memset(binbuf, 'f', binbuflen);
+      clear_display();
+      display.print("Installing: ");
+      float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
+      display.print(percent);
+      display.println("%");
+      display.println("DO NOT POWER OFF");
+      display.display();
     }
     
   }
+  
+  clear_display();
+  display.println("Completing install");
+  display.println("Please wait");
+  display.println("DO NOT POWER OFF");
+  display.display();
+  
   if (counter != 0){
     Update.write(binbuf,counter);
   }
-  
   Update.end(true);
 
   clear_display();
@@ -671,11 +684,11 @@ void boot_config(){
                     //In future lets iterate *.bin
                     if (SD.exists("/A.bin")){
                       String filehash = file_hash("/A.bin");
-                      client.println("<tr><td>A.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=A.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>A.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
-                      client.println("<tr><td>B.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=B.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>B.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr>");
                   }

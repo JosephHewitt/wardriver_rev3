@@ -124,6 +124,7 @@ boolean block_resets = false;
 boolean block_reconfigure = false;
 int web_timeout = 60000; //ms to spend hosting the web interface before booting.
 int gps_allow_stale_time = 60000;
+boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
 
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
@@ -143,21 +144,6 @@ int get_config_int(String key, int def=0){
     return def;
   }
   return res.toInt();
-}
-
-static void print_hex(const char *title, const unsigned char buf[], size_t len)
-{
-    Serial.printf("%s: ", title);
-
-    for (size_t i = 0; i < len; i++) {
-        if (buf[i] < 0xF) {
-            Serial.printf("0%x", buf[i]);
-        } else {
-            Serial.printf("%x", buf[i]);
-        }
-    }
-
-    Serial.println();
 }
 
 String file_hash(String filename, boolean update_lcd=true){
@@ -191,6 +177,81 @@ String file_hash(String filename, boolean update_lcd=true){
   }
   mbedtls_sha256_finish(&ctx, genhash);
   return hex_str(genhash, sizeof genhash);
+}
+
+static void print_hex(const char *title, const unsigned char buf[], size_t len)
+{
+    Serial.printf("%s: ", title);
+
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] < 0xF) {
+            Serial.printf("0%x", buf[i]);
+        } else {
+            Serial.printf("%x", buf[i]);
+        }
+    }
+
+    Serial.println();
+}
+
+boolean install_firmware(String filepath, String expect_hash = "") {
+  //Install a .bin binary to the local device.
+  //If expect_hash is not empty, the hash will be validated first.
+  
+  if (!SD.exists(filepath)) {
+    Serial.print("File not found: ");
+    Serial.println(filepath);
+    return false;
+  }
+  if (expect_hash.length() > 0) {
+  Serial.println("Validating checksum");
+    if (expect_hash != file_hash(filepath)) {
+      Serial.println("Local checksum mismatch");
+      return false;
+    }
+  }
+
+  if (enforce_valid_binary_checksums) {
+    //At this point, make a HTTPS request to an API which can validate the .bin checksum.
+    //Fail here if the checksum is a mismatch.
+  }
+
+  clear_display();
+  display.println("Installing update");
+  display.display();
+
+  File binreader = SD.open(filepath, FILE_READ);
+  #define binbuflen 4096
+  uint8_t binbuf[binbuflen] = { 0x00 };
+
+  Update.begin(binreader.size());
+  int counter = 0;
+  
+  while (binreader.available()) {
+    byte c = binreader.read();
+    binbuf[counter] = c;
+    counter++;
+    if (counter == binbuflen){
+      Update.write(binbuf,counter);
+      counter = 0;
+      memset(binbuf, 'f', binbuflen);
+    }
+    
+  }
+  if (counter != 0){
+    Update.write(binbuf,counter);
+  }
+  
+  Update.end(true);
+
+  clear_display();
+  display.println("Update installed");
+  display.println("Restarting now");
+  display.display();
+  delay(1000);
+  ESP.restart();
+
+  return true;
 }
 
 String hex_str(const unsigned char buf[], size_t len)
@@ -237,6 +298,7 @@ void boot_config(){
   block_reconfigure = get_config_bool("block_reconfigure", block_reconfigure);
   web_timeout = get_config_int("web_timeout", web_timeout);
   gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
+  enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
 
   preferences.begin("wardriver", false);
   bool firstrun = preferences.getBool("first", true);
@@ -616,6 +678,33 @@ void boot_config(){
                       client.println("<tr><td>B.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr>");
+                  }
+
+                  if (buff.indexOf("GET /fwins") > -1) {
+                    int startpos = buff.indexOf("?h=") + 3;
+                    int endpos = buff.indexOf("&");
+                    String expect_hash = GP_urldecode(buff.substring(startpos, endpos));
+                    startpos = buff.indexOf("&n=") + 3;
+                    endpos = buff.indexOf(" HTTP");
+                    String fw_filename = GP_urldecode(buff.substring(startpos, endpos));
+
+                    client.println("Content-type: text/html");
+                    client.println();
+                    Serial.print("Firmware install requested: ");
+                    Serial.print(fw_filename);
+                    Serial.print(expect_hash);
+
+                    if (expect_hash.length() > 0 && SD.exists(fw_filename)) {
+                      Serial.println("Will install firmware");
+                      client.print("<h1>Firmware will now be installed. Check the wardriver LCD for progress</h1>");
+                      client.print("\n\r\n\r");
+                      client.flush();
+                      delay(5);
+                      client.stop();
+                      install_firmware(fw_filename, expect_hash);
+                    } else {
+                      client.print("<h1>Error verifying update</h1>");
+                    }
                   }
 
                   if (buff.indexOf("POST /fw") > -1){

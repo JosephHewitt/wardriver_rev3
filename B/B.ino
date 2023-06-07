@@ -9,6 +9,9 @@
 #include <BLEDevice.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
+#include <Update.h>
+#include "mbedtls/sha256.h"
+#include "mbedtls/md.h"
 
 //LCD stuff. Side B does not normally have an LCD but this allows us to print an error if you flash the firmware onto the wrong ESP32.
 #include <Wire.h>
@@ -25,6 +28,8 @@ byte addr[8]; //The DS18B20 address
 
 boolean serial_lock = false; //Set to true when the serial with side A is in active use.
 boolean temperature_sensor_ok = true; //Set to false automatically if a DS18B20 is not detected.
+boolean ota_mode = false; //Set to true automatically when doing OTA update
+String ota_hash = ""; //SHA256 of the OTA update, set automatically.
 
 #define mac_history_len 256
 
@@ -123,6 +128,21 @@ void read_temperature(){
   Serial1.print("TEMP,");
   Serial1.println(celsius);
   serial_lock = false;
+}
+
+String hex_str(const unsigned char buf[], size_t len)
+{
+    String outstr;
+    char outchr[6];
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] < 0xF) {
+            sprintf(outchr, "0%x", buf[i]);
+        } else {
+            sprintf(outchr, "%x", buf[i]);
+        }
+        outstr = outstr + outchr;
+    }
+    return outstr;
 }
 
 void setup() {
@@ -235,6 +255,85 @@ unsigned long last_sim_request;
 unsigned long last_temperature;
 
 void loop() {
+  if (ota_mode){
+    boolean preamble_started = false;
+    boolean binary_started = false;
+    Serial.println("Core1 OTA");
+    Serial1.println(ota_hash);
+    Serial1.flush();
+    Update.begin(UPDATE_SIZE_UNKNOWN);
+    #define binbuflen 4096
+    uint8_t binbuf[binbuflen] = { 0x00 };
+    int counter = 0;
+
+    //Setup a hash context, and somewhere to keep the output.
+    unsigned char genhash[32];
+    mbedtls_sha256_context ctx;
+    mbedtls_sha256_init(&ctx);
+    mbedtls_sha256_starts(&ctx, 0);
+    unsigned long fw_last_byte = millis();
+    byte bbuf[2] = {0x00, 0x00};
+    
+    while (ota_mode){
+      if (Serial1.available()){
+        byte c = Serial1.read();
+        fw_last_byte = millis();
+        Serial.println(c,HEX);
+        if (c == 0xFF){
+          //Do a flush on the first byte of the preamble, just in case. A side does too.
+          if (!preamble_started){
+            Serial1.flush();
+            Serial.println("OTA preamble");
+          }
+          preamble_started = true;
+        }
+        //0xE9 is the magic, but we won't use it. Maybe one day.
+        if (c != 0xFF && preamble_started){
+          if (!binary_started){
+            Serial.println("OTA preamble end");
+            Serial.flush();
+          }
+          binary_started = true;
+        }
+        if (binary_started){
+          bbuf[0] = c;
+          mbedtls_sha256_update(&ctx, bbuf, 1);
+          binbuf[counter] = c;
+          counter++;
+          fw_last_byte = millis();
+          if (counter == binbuflen){
+            Update.write(binbuf,counter);
+            counter = 0;
+            memset(binbuf, 'f', binbuflen);
+          }
+        }
+        Serial1.write(c);
+      } //Serial1 available
+      
+      if (millis() - fw_last_byte > 4000){
+        Serial.println("Upload complete");
+        mbedtls_sha256_finish(&ctx, genhash);
+        String actual_hash = hex_str(genhash, sizeof genhash);
+        if (actual_hash == ota_hash){
+          Update.end(true);
+          Serial.println("Update OK and verified");
+          Serial.flush();
+          Serial1.println("OK");
+          Serial1.println("VERIFIED");
+          delay(1000);
+          ESP.restart();
+        } else {
+          Serial.println("HASH MISMATCH:");
+          Serial.println(actual_hash);
+          Serial.println(ota_hash);
+          Update.abort();
+          Serial1.println("FAILURE");
+          ESP.restart();
+        }
+        
+      }
+    }
+  }
   clear_mac_history();
   BLEScanResults foundDevices = pBLEScan->start(2.5, false);
   await_serial();
@@ -292,6 +391,20 @@ void loop() {
 void loop2( void * parameter) {
   boolean had_gsm_data = false;
   while (true) {
+    while (Serial1.available()){
+      //ESP A rarely talks to us, but it's usually important
+      String a_buff = Serial1.readStringUntil('\n');
+      if (a_buff.startsWith("FWUP:")){
+        Serial.println("Core2 OTA prep");
+        ota_hash = a_buff.substring(5);
+        ota_mode = true;
+        while (ota_mode){
+          //Keep this core busy
+          yield();
+        }
+      }
+      
+    }
     if (Serial2.available()){
       char linebuf[120];
       int i = 0;

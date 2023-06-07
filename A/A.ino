@@ -11,6 +11,9 @@ const String VERSION = "1.2.0b1";
 #include <WiFi.h>
 #include <Preferences.h>
 #include <time.h>
+#include <Update.h>
+#include "mbedtls/sha256.h"
+#include "mbedtls/md.h"
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -121,6 +124,7 @@ boolean block_resets = false;
 boolean block_reconfigure = false;
 int web_timeout = 60000; //ms to spend hosting the web interface before booting.
 int gps_allow_stale_time = 60000;
+boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
 
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
@@ -140,6 +144,142 @@ int get_config_int(String key, int def=0){
     return def;
   }
   return res.toInt();
+}
+
+String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wardriver busy"){
+  File reader = SD.open(filename, FILE_READ);
+  //Setup a hash context, and somewhere to keep the output.
+  unsigned char genhash[32];
+  byte bbuf[2] = {0x00, 0x00};
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  mbedtls_sha256_starts(&ctx, 0);
+
+  int i = 0;
+
+  while (reader.available()){
+    byte c = reader.read();
+    bbuf[0] = c;
+    mbedtls_sha256_update(&ctx, bbuf, 1);
+    i++;
+    if (i > 1800){
+      i = 0;
+      if (update_lcd){
+        clear_display();
+        display.println(lcd_prompt);
+        float percent = ((float)reader.position() / (float)reader.size()) * 100;
+        display.print(percent);
+        display.println("%");
+        display.display();
+      }
+    }
+    
+  }
+  mbedtls_sha256_finish(&ctx, genhash);
+  return hex_str(genhash, sizeof genhash);
+}
+
+static void print_hex(const char *title, const unsigned char buf[], size_t len)
+{
+    Serial.printf("%s: ", title);
+
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] < 0xF) {
+            Serial.printf("0%x", buf[i]);
+        } else {
+            Serial.printf("%x", buf[i]);
+        }
+    }
+
+    Serial.println();
+}
+
+boolean install_firmware(String filepath, String expect_hash = "") {
+  //Install a .bin binary to the local device.
+  //If expect_hash is not empty, the hash will be validated first.
+  
+  if (!SD.exists(filepath)) {
+    Serial.print("File not found: ");
+    Serial.println(filepath);
+    return false;
+  }
+  if (expect_hash.length() > 0) {
+    Serial.println("Validating firmware");
+    if (expect_hash != file_hash(filepath, true, "Validating firmware")) {
+      Serial.println("Local checksum mismatch");
+      return false;
+    }
+  }
+
+  if (enforce_valid_binary_checksums) {
+    //At this point, make a HTTPS request to an API which can validate the .bin checksum.
+    //Fail here if the checksum is a mismatch.
+  }
+
+  clear_display();
+  display.println("Installing update");
+  display.display();
+
+  File binreader = SD.open(filepath, FILE_READ);
+  #define binbuflen 4096
+  uint8_t binbuf[binbuflen] = { 0x00 };
+
+  Update.begin(binreader.size());
+  int counter = 0;
+  
+  while (binreader.available()) {
+    byte c = binreader.read();
+    binbuf[counter] = c;
+    counter++;
+    if (counter == binbuflen){
+      Update.write(binbuf,counter);
+      counter = 0;
+      memset(binbuf, 'f', binbuflen);
+      clear_display();
+      display.print("Installing: ");
+      float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
+      display.print(percent);
+      display.println("%");
+      display.println("DO NOT POWER OFF");
+      display.display();
+    }
+    
+  }
+  
+  clear_display();
+  display.println("Completing install");
+  display.println("Please wait");
+  display.println("DO NOT POWER OFF");
+  display.display();
+  
+  if (counter != 0){
+    Update.write(binbuf,counter);
+  }
+  Update.end(true);
+
+  clear_display();
+  display.println("Update installed");
+  display.println("Restarting now");
+  display.display();
+  delay(1000);
+  ESP.restart();
+
+  return true;
+}
+
+String hex_str(const unsigned char buf[], size_t len)
+{
+    String outstr;
+    char outchr[6];
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] < 0xF) {
+            sprintf(outchr, "0%x", buf[i]);
+        } else {
+            sprintf(outchr, "%x", buf[i]);
+        }
+        outstr = outstr + outchr;
+    }
+    return outstr;
 }
 
 boolean get_config_bool(String key, boolean def=false){
@@ -171,6 +311,7 @@ void boot_config(){
   block_reconfigure = get_config_bool("block_reconfigure", block_reconfigure);
   web_timeout = get_config_int("web_timeout", web_timeout);
   gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
+  enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
 
   preferences.begin("wardriver", false);
   bool firstrun = preferences.getBool("first", true);
@@ -524,10 +665,107 @@ void boot_config(){
                       }
                     }
                     client.print("</table><br><hr>");
-                    client.print("<br>v");
+                    client.print("<input type=\"file\" id=\"file\" /><button id=\"read-file\">Read File</button>");
+                    client.print("<br><br>v");
                     client.println(VERSION);
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
-                    client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null);</script>");
+                    //Also a snippet to force binary uploads instead of multipart.
+                    client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
+                  }
+
+                  if (buff.indexOf("GET /fwup") > -1){
+                    client.println("Content-type: text/html");
+                    client.println();
+                    Serial.println("Sending FW update page");
+                    client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head><table>");
+                    client.println("<tr><th>Filename</th><th>SHA256</th><th>Opt</th></tr>");
+                    client.flush();
+                    //In future lets iterate *.bin
+                    if (SD.exists("/A.bin")){
+                      String filehash = file_hash("/A.bin");
+                      client.println("<tr><td>A.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                    }
+                    if (SD.exists("/B.bin")){
+                      String filehash = file_hash("/B.bin");
+                      client.println("<tr><td>B.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                    }
+                    client.println("</tr>");
+                  }
+
+                  if (buff.indexOf("GET /fwins") > -1) {
+                    int startpos = buff.indexOf("?h=") + 3;
+                    int endpos = buff.indexOf("&");
+                    String expect_hash = GP_urldecode(buff.substring(startpos, endpos));
+                    startpos = buff.indexOf("&n=") + 3;
+                    endpos = buff.indexOf(" HTTP");
+                    String fw_filename = GP_urldecode(buff.substring(startpos, endpos));
+
+                    client.println("Content-type: text/html");
+                    client.println();
+                    Serial.print("Firmware install requested: ");
+                    Serial.print(fw_filename);
+                    Serial.print(expect_hash);
+
+                    if (expect_hash.length() > 0 && SD.exists(fw_filename)) {
+                      Serial.println("Will install firmware");
+                      client.print("<h1>Firmware will now be installed. Check the wardriver LCD for progress</h1>");
+                      client.print("\n\r\n\r");
+                      client.flush();
+                      delay(5);
+                      client.stop();
+                      install_firmware(fw_filename, expect_hash);
+                    } else {
+                      client.print("<h1>Error verifying update</h1>");
+                    }
+                  }
+
+                  if (buff.indexOf("POST /fw") > -1){
+                    Serial.println("Incoming firmware");
+                    int startpos = buff.indexOf("?n=")+3;
+                    int endpos = buff.indexOf(" ",startpos);
+                    String bin_filename = buff.substring(startpos,endpos);
+                    Serial.println(bin_filename);
+                    String newname = "/other.bin";
+                    if (bin_filename.startsWith("A")){
+                      newname = "/A.bin";
+                    }
+                    if (bin_filename.startsWith("B")){
+                      newname = "/B.bin";
+                    }
+
+                    Serial.println(newname);
+                    if (SD.exists(newname)){
+                      SD.remove(newname);
+                    }
+                    File binwriter = SD.open(newname, FILE_WRITE);
+
+                    //Setup a hash context, and somewhere to keep the output.
+                    unsigned char genhash[32];
+                    mbedtls_sha256_context ctx;
+                    mbedtls_sha256_init(&ctx);
+                    mbedtls_sha256_starts(&ctx, 0);
+
+                    unsigned long fw_last_byte = millis();
+                    byte bbuf[2] = {0x00, 0x00};
+                    while (1) {
+                      if (client.available()){
+                        byte c = client.read();
+                        binwriter.write(c);
+                        bbuf[0] = c;
+                        mbedtls_sha256_update(&ctx, bbuf, 1);
+                        
+                        fw_last_byte = millis();
+                      }
+                      if (millis() - fw_last_byte > 4000){
+                        Serial.println("Done");
+                        mbedtls_sha256_finish(&ctx, genhash);
+                        print_hex("HASHED", genhash, sizeof genhash);
+                        binwriter.flush();
+                        binwriter.close();
+                        break;
+                      }
+                    } //Firmware update loop
                   }
 
                   if (buff.indexOf("GET /time?") > -1){

@@ -203,9 +203,11 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     Serial.println(filepath);
     return false;
   }
+
+  Serial.println("Validating firmware");
+  String actual_hash = file_hash(filepath, true, "Validating firmware");
   if (expect_hash.length() > 0) {
-    Serial.println("Validating firmware");
-    if (expect_hash != file_hash(filepath, true, "Validating firmware")) {
+    if (expect_hash != actual_hash) {
       Serial.println("Local checksum mismatch");
       return false;
     }
@@ -216,53 +218,206 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //Fail here if the checksum is a mismatch.
   }
 
-  clear_display();
-  display.println("Installing update");
-  display.display();
+  if (filepath == "/A.bin"){
 
-  File binreader = SD.open(filepath, FILE_READ);
-  #define binbuflen 4096
-  uint8_t binbuf[binbuflen] = { 0x00 };
-
-  Update.begin(binreader.size());
-  int counter = 0;
+    clear_display();
+    display.println("Installing update");
+    display.display();
   
-  while (binreader.available()) {
-    byte c = binreader.read();
-    binbuf[counter] = c;
-    counter++;
-    if (counter == binbuflen){
+    File binreader = SD.open(filepath, FILE_READ);
+    #define binbuflen 4096
+    uint8_t binbuf[binbuflen] = { 0x00 };
+  
+    Update.begin(binreader.size());
+    int counter = 0;
+    
+    while (binreader.available()) {
+      byte c = binreader.read();
+      binbuf[counter] = c;
+      counter++;
+      if (counter == binbuflen){
+        Update.write(binbuf,counter);
+        counter = 0;
+        memset(binbuf, 'f', binbuflen);
+        clear_display();
+        display.print("Installing: ");
+        float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
+        display.print(percent);
+        display.println("%");
+        display.println("DO NOT POWER OFF");
+        display.display();
+      }
+      
+    }
+    
+    if (counter != 0){
       Update.write(binbuf,counter);
-      counter = 0;
-      memset(binbuf, 'f', binbuflen);
+    }
+    Update.end(true);
+  
+    clear_display();
+    display.println("Update installed");
+    display.println("Restarting now");
+    display.display();
+    delay(1000);
+    ESP.restart();
+  
+    return true;
+  }
+
+  if (filepath == "/B.bin"){
+    Serial.println("Firmware update for side B");
+    boolean update_ready = false;
+    Serial1.flush();
+    String b_buff = "";
+    int ready_failures = 0;
+    clear_display();
+    display.println("Getting B ready");
+    display.display();
+    
+    while (!update_ready){
+      Serial.println("Getting B ready");
+      Serial1.print("FWUP:");
+      Serial1.print(actual_hash);
+      Serial1.print("\n");
+      Serial1.flush();
+      int linecounter = 0;
+      while (linecounter < 5){
+        String buff = Serial1.readStringUntil('\n');
+        if (buff.indexOf(actual_hash) > -1){
+          update_ready = true;
+          break;
+        }
+        Serial.print("Unwanted: ");
+        Serial.println(buff);
+        buff = "";
+        linecounter++;
+      }
+      if (!update_ready){
+        ready_failures++;
+      }
+      if (ready_failures > 9){
+        Serial.println("Unable to configure B!");
+        Serial.println("Likely B is outdated, does not support OTA, and must be updated manually");
+        clear_display();
+        display.println("FAILURE");
+        display.println("Update B manually!");
+        display.println("OTA not supported");
+        display.display();
+        delay(10000);
+        return false;
+      }
+    }
+    //At this point, B side is in update mode.
+    Serial.println("B is ready");
+    clear_display();
+    display.println("B is ready");
+    display.println("Please wait");
+    display.display();
+    //0xE9 is the binary header, let's spam something else to be sure we're clear of junk
+    for(int i=0; i<3000; i++){
+      Serial1.write(0xFF);
+      Serial1.flush();
+      delay(1);
+    }
+    //B will sense 0xFF -> 0xE9 and start the update.
+
+    //START UPDATE
+
+    File binreader = SD.open(filepath, FILE_READ);
+    int counter = 0;
+    int pause_byte_counter = 0;
+    
+    while (binreader.available()) {
+      byte c = binreader.read();
+      Serial1.write(c);
+      counter++;
+      pause_byte_counter++;
+
+      while (Serial1.available()){
+        //We don't care what B says, just clear the RX buffer
+        Serial1.read();
+      }
+      
+      if (pause_byte_counter >= 110){
+        //If we stop, B will send us a message when it wants more.
+        while (!Serial1.available()){
+          yield();
+        }
+        pause_byte_counter = 0;
+      }
+
+      if (counter > 5000 || binreader.position() <= 1){
+        counter = 0;
+        clear_display();
+        display.print("Installing: ");
+        float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
+        display.print(percent);
+        display.println("%");
+        display.println("DO NOT POWER OFF");
+        display.display();
+      }
+    }
+    Serial1.flush();
+    
+    clear_display();
+    display.println("Completing install");
+    display.println("Please wait");
+    display.println("DO NOT POWER OFF");
+    display.display();
+    int tocounter = 0;
+    boolean did_update = false;
+    boolean transfer_success = false;
+
+    while (!did_update){
+      String buff = Serial1.readStringUntil('\n');
       clear_display();
-      display.print("Installing: ");
-      float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
-      display.print(percent);
-      display.println("%");
+      if (!transfer_success){
+        display.println("Verifying..");
+      } else {
+        display.println("Finalizing..");
+      }
       display.println("DO NOT POWER OFF");
+      display.print("Count:");
+      tocounter++;
+      display.println(tocounter);
       display.display();
+      if (buff.indexOf(actual_hash) > -1){
+        Serial.println("Update transfer verified");
+        transfer_success = true;
+        tocounter = 0;
+      }
+      if (buff.indexOf("FAILURE") > -1){
+        Serial.println("B confirmed failure");
+        clear_display();
+        display.println("FAILURE");
+        display.println("Hash mismatch");
+        display.display();
+        delay(10000);
+        return false;
+      }
+      if (transfer_success == true && tocounter > 3){
+        Serial.println("Update complete");
+        clear_display();
+        display.println("Update complete");
+        display.display();
+        delay(4000);
+        did_update = true;
+        return true;
+      }
+      if (transfer_success == false && tocounter > 40){
+        Serial.println("Update failed");
+        clear_display();
+        display.println("!FAILURE!");
+        display.println("Try again");
+        display.display();
+        delay(7500);
+        return false;
+      }
+      
     }
     
   }
-  
-  clear_display();
-  display.println("Completing install");
-  display.println("Please wait");
-  display.println("DO NOT POWER OFF");
-  display.display();
-  
-  if (counter != 0){
-    Update.write(binbuf,counter);
-  }
-  Update.end(true);
-
-  clear_display();
-  display.println("Update installed");
-  display.println("Restarting now");
-  display.display();
-  delay(1000);
-  ESP.restart();
 
   return true;
 }
@@ -871,6 +1026,7 @@ void boot_config(){
                   delay(5);
                   client.stop();
                   buff = "";
+                  disconnectat = millis() + web_timeout;
                 }
                 newline = true;
               } else {

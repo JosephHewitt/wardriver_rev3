@@ -14,6 +14,7 @@ const String VERSION = "1.2.0b1";
 #include <Update.h>
 #include "mbedtls/sha256.h"
 #include "mbedtls/md.h"
+#include <WiFiClientSecure.h>
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -125,6 +126,91 @@ boolean block_reconfigure = false;
 int web_timeout = 60000; //ms to spend hosting the web interface before booting.
 int gps_allow_stale_time = 60000;
 boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
+
+
+boolean use_fallback_cert = false;
+
+// CERTIFICATES 
+
+static const char *PRIMARY_OTA_CERT = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDeTCCAmGgAwIBAgIUbrbwBJuNsr7DeScXZxaUynePHfowDQYJKoZIhvcNAQEL
+BQAwTDELMAkGA1UEBhMCTkwxCzAJBgNVBAgMAlpIMRUwEwYDVQQKDAx3YXJkcml2
+ZXIudWsxGTAXBgNVBAMMEG90YS53YXJkcml2ZXIudWswHhcNMjMwNjA4MjAwMTQ1
+WhcNMjUwMTI4MjAwMTQ1WjBMMQswCQYDVQQGEwJOTDELMAkGA1UECAwCWkgxFTAT
+BgNVBAoMDHdhcmRyaXZlci51azEZMBcGA1UEAwwQb3RhLndhcmRyaXZlci51azCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANhPWzq8txiMt4IJikuZnNov
+6rAvAM3OicSKofdkOuvNOV6HlVmfzYVNNlESakuloEYRPwF7oxhQEPeU2X2jsQK6
+cCuWrAR2SWPTJ1kk+gNMx7Xq7GOU11wuHFJNRESdOCSCvixCjg/fbMb0Zmt9z/gX
+Rur0Pg/uYEcUgFyJ8KYgDh7m7chCfcFafhQ5RnkXpMINBZX+GmC/BQ57uZhrdTyY
+x5ZnjrLjzvjgLmABRTynCELPDjosfquxW+fHoG48qk4QLMhu/f8JItOce5kmIvS+
+v/766LN2gVK7oYlWjN44Sa/5hlp6Rl2YXGayYOAiivuyr/vniG0xoi2LBe1/WtsC
+AwEAAaNTMFEwHQYDVR0OBBYEFF5wxZNmrWN8/a2a0fAPmJJ/m+OaMB8GA1UdIwQY
+MBaAFF5wxZNmrWN8/a2a0fAPmJJ/m+OaMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBACpF2qkQd40MLWkMDYaoZFYeZMMt7ktsRAjo6P5HNVAQMdMz
+i9GtYLiXNFyw/Ub0X0JFwZDiqFSKcxJIWx5hgEVTSIvg36ZCRmrP1gmcVtzLbgjG
+oTlYBrUQdeH0KYG+7xMdPJI4+8yc3OXsoZjr4tIlbZJtej6OBipZks645BKUAs3a
+NUVm7tvzg9hEsfPDXXubcK6JLPdNwrnVEmwq6NlKVVHN9McExBumGKnyKYGK8MZF
+KwkScjhM4MVp5+qVrnuZgqkwM0ZOpZ/vAlD6Csv/DplY92nZs1vHSp2RDVHq6IFI
+IY8r4D96F4ocMmptiPuXifjDkGbXPqfnJhwhaMA=
+-----END CERTIFICATE-----
+)EOF";
+
+static const char *FALLBACK_OTA_CERT = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDeTCCAmGgAwIBAgIUGYewdq7AvB2vvsbAUHlWjCDKOxwwDQYJKoZIhvcNAQEL
+BQAwTDELMAkGA1UEBhMCTkwxCzAJBgNVBAgMAlpIMRUwEwYDVQQKDAx3YXJkcml2
+ZXIudWsxGTAXBgNVBAMMEG90YS53YXJkcml2ZXIudWswHhcNMjMwNjA4MjExMTU2
+WhcNMjUwMTI4MjExMTU2WjBMMQswCQYDVQQGEwJOTDELMAkGA1UECAwCWkgxFTAT
+BgNVBAoMDHdhcmRyaXZlci51azEZMBcGA1UEAwwQb3RhLndhcmRyaXZlci51azCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgho/33AY1ebgflGyhA9eU+
+/ze4j8BA5FYfbnYleV/LJ6BsP4a6E57e8szsa2DUZ/0jIzdF6QHz/XxUFNQC+5Od
+/LueI/sdu+Z4phClu6fQoPgtCvPaGgtb5OGeUpljIw7h4GZVMVwK3tqkG8JESRD1
+FQg3fCXKxMXRU+dNzzEIUR191+vWLuv9D2ZFsQEmU5HRQTbF0sDw5kzcYCdDoiJW
+ixrKhhxj81pwr4PAh+mPLtOQtV9Ok4knIImlLD/8nwwdbHFJYQK5d7feZ5Mw3cY8
+wbujUe3p/bDYbGFXU5LsN7Cba9E0lm+WqrnT+td78w6vMROG9rtLQRnncGxjAw0C
+AwEAAaNTMFEwHQYDVR0OBBYEFOTsW5Mm++U6HZMZWeHx2uJPf+3dMB8GA1UdIwQY
+MBaAFOTsW5Mm++U6HZMZWeHx2uJPf+3dMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBAFugISxQgZ7HPTZwhDweFyea6fp1P5yXMqGfF6aNp4Fo0Tyn
+6i4df2w5Cem32uxKDXNPPqwk6GGBIVHmcOD3AkwEqmPEX4PRd879BUv7P/A8QZEx
+7ZsKdqOaD0BXvbcJnj38fFSQ6DRHqfQIWXgv6/ZADtUsCFToGxhM5TAppEGuFFJN
+8SqCY3vyWW9Ww4oRLwPek5PwZCde1yHmBpgsTnyIFlYxptacAUuDO1zrWhva6cvd
+8K6xHONtkySMAlt8k59rP/qKMIVMDoyZ7VM/0sN871DkDqarqvf4SM+Qkb8dPs0B
+SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
+-----END CERTIFICATE-----
+)EOF";
+
+// END CERTIFICATES
+
+boolean contact_ota_server(){
+  Serial.println("Contacting OTA server");
+  WiFiClientSecure httpsclient;
+  if (use_fallback_cert){
+    httpsclient.setCACert(FALLBACK_OTA_CERT);
+  } else {
+    httpsclient.setCACert(PRIMARY_OTA_CERT);
+  }
+  if (!httpsclient.connect("ota.wardriver.uk", 443)){
+    Serial.println("failed");
+    use_fallback_cert = true;
+    return false;
+  } else {
+    httpsclient.println("GET / HTTP/1.0");
+    httpsclient.println("Host: ota.wardriver.uk");
+    httpsclient.println("Connection: close");
+    httpsclient.print("User-Agent: ");
+    httpsclient.print(device_type_string());
+    httpsclient.print(" / ");
+    httpsclient.println(VERSION);
+    httpsclient.println();
+  }
+  while (httpsclient.connected()){
+    String buff = httpsclient.readStringUntil('\n');
+    Serial.println(buff);
+  }
+  Serial.println("Done talking to OTA server");
+  return true;
+}
 
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
@@ -712,6 +798,11 @@ void boot_config(){
         Serial.print("Time is now set to ");
         Serial.println(epoch);
         Serial.println("Continuing..");
+        boolean contacted = contact_ota_server();
+        if (!contacted){
+          //A failure will automatically choose the fallback cert preference, so we can immediately retry.
+          contact_ota_server();
+        }
       }
       unsigned long disconnectat = millis() + web_timeout;
       String buff;

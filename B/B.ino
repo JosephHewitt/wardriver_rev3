@@ -272,13 +272,11 @@ void loop() {
     mbedtls_sha256_init(&ctx);
     mbedtls_sha256_starts(&ctx, 0);
     unsigned long fw_last_byte = millis();
-    byte bbuf[2] = {0x00, 0x00};
     
     while (ota_mode){
       if (Serial1.available()){
         byte c = Serial1.read();
         fw_last_byte = millis();
-        Serial.println(c,HEX);
         if (c == 0xFF){
           //Do a flush on the first byte of the preamble, just in case. A side does too.
           if (!preamble_started){
@@ -296,31 +294,38 @@ void loop() {
           binary_started = true;
         }
         if (binary_started){
-          bbuf[0] = c;
-          mbedtls_sha256_update(&ctx, bbuf, 1);
+          
           binbuf[counter] = c;
           counter++;
           fw_last_byte = millis();
           if (counter == binbuflen){
             Update.write(binbuf,counter);
+            mbedtls_sha256_update(&ctx, binbuf, counter);
             counter = 0;
             memset(binbuf, 'f', binbuflen);
           }
         }
-        Serial1.write(c);
-      } //Serial1 available
+      } else { //Serial1 available
+        Serial1.write(0xFF);
+      }
       
       if (millis() - fw_last_byte > 4000){
         Serial.println("Upload complete");
+        if (counter > 0){
+          Update.write(binbuf,counter);
+          mbedtls_sha256_update(&ctx, binbuf, counter);
+        }
         mbedtls_sha256_finish(&ctx, genhash);
         String actual_hash = hex_str(genhash, sizeof genhash);
         if (actual_hash == ota_hash){
           Update.end(true);
           Serial.println("Update OK and verified");
           Serial.flush();
-          Serial1.println("OK");
-          Serial1.println("VERIFIED");
-          delay(1000);
+          Serial1.println(actual_hash);
+          delay(500);
+          Serial1.println(actual_hash);
+          Serial1.flush();
+          delay(500);
           ESP.restart();
         } else {
           Serial.println("HASH MISMATCH:");

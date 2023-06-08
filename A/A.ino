@@ -278,7 +278,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     while (!update_ready){
       Serial.println("Getting B ready");
       Serial1.print("FWUP:");
-      Serial1.println(actual_hash);
+      Serial1.print(actual_hash);
+      Serial1.print("\n");
       Serial1.flush();
       int linecounter = 0;
       while (linecounter < 5){
@@ -309,8 +310,12 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     }
     //At this point, B side is in update mode.
     Serial.println("B is ready");
+    clear_display();
+    display.println("B is ready");
+    display.println("Please wait");
+    display.display();
     //0xE9 is the binary header, let's spam something else to be sure we're clear of junk
-    for(int i=0; i<5000; i++){
+    for(int i=0; i<3000; i++){
       Serial1.write(0xFF);
       Serial1.flush();
       delay(1);
@@ -321,20 +326,28 @@ boolean install_firmware(String filepath, String expect_hash = "") {
 
     File binreader = SD.open(filepath, FILE_READ);
     int counter = 0;
+    int pause_byte_counter = 0;
     
     while (binreader.available()) {
       byte c = binreader.read();
       Serial1.write(c);
-      while (!Serial1.available()){
-        yield();
-      }
+      counter++;
+      pause_byte_counter++;
+
       while (Serial1.available()){
+        //We don't care what B says, just clear the RX buffer
         Serial1.read();
       }
-      counter++;
       
+      if (pause_byte_counter >= 110){
+        //If we stop, B will send us a message when it wants more.
+        while (!Serial1.available()){
+          yield();
+        }
+        pause_byte_counter = 0;
+      }
 
-      if (counter > 7000){
+      if (counter > 5000 || binreader.position() <= 1){
         counter = 0;
         clear_display();
         display.print("Installing: ");
@@ -344,7 +357,6 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         display.println("DO NOT POWER OFF");
         display.display();
       }
-      
     }
     Serial1.flush();
     
@@ -369,10 +381,20 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       display.print("Count:");
       tocounter++;
       display.println(tocounter);
+      display.display();
       if (buff.indexOf(actual_hash) > -1){
         Serial.println("Update transfer verified");
         transfer_success = true;
         tocounter = 0;
+      }
+      if (buff.indexOf("FAILURE") > -1){
+        Serial.println("B confirmed failure");
+        clear_display();
+        display.println("FAILURE");
+        display.println("Hash mismatch");
+        display.display();
+        delay(10000);
+        return false;
       }
       if (transfer_success == true && tocounter > 3){
         Serial.println("Update complete");
@@ -383,7 +405,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         did_update = true;
         return true;
       }
-      if (transfer_success == false && tocounter > 30){
+      if (transfer_success == false && tocounter > 40){
         Serial.println("Update failed");
         clear_display();
         display.println("!FAILURE!");

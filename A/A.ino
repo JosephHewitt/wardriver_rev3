@@ -186,6 +186,9 @@ SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
 // END CERTIFICATES
 
 String ota_get_url(String url){
+  clear_display();
+  display.println("Contacting server");
+  display.display();
 
   Serial.print("Contacting OTA server -> ");
   Serial.println(url);
@@ -352,7 +355,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
   if (enforce_valid_binary_checksums) {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
-    int check_result = online_hash_check(actual_hash);
+    
+    //int check_result = online_hash_check(actual_hash);
     
   }
 
@@ -981,19 +985,23 @@ void boot_config(){
                       String filehash = file_hash("/A.bin");
                       int check_result = online_hash_check(filehash);
                       String color = "red";
+                      String emoji = "&#9888;"; //warning
                       if (check_result == 0){
                         color = "green";
+                        emoji = "&#128274;"; //lock
                       }
-                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
                       int check_result = online_hash_check(filehash);
                       String color = "red";
+                      String emoji = "&#9888;"; //warning
                       if (check_result == 0){
                         color = "green";
+                        emoji = "&#128274;"; //lock
                       }
-                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr>");
                   }

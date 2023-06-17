@@ -131,6 +131,9 @@ boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums onl
 boolean use_fallback_cert = false;
 
 // CERTIFICATES 
+// These certs are used for HTTPS comms to the OTA backend.
+// By hardcoding them, we are asserting trust. CAs are not used.
+// They will be rotated regularly.
 
 static const char *PRIMARY_OTA_CERT = R"EOF(
 -----BEGIN CERTIFICATE-----
@@ -182,20 +185,31 @@ SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
 
 // END CERTIFICATES
 
-boolean contact_ota_server(){
-  Serial.println("Contacting OTA server");
+String ota_get_url(String url){
+
+  Serial.print("Contacting OTA server -> ");
+  Serial.println(url);
   WiFiClientSecure httpsclient;
   if (use_fallback_cert){
+    Serial.println("fallback cert");
     httpsclient.setCACert(FALLBACK_OTA_CERT);
   } else {
+    Serial.println("primary cert");
     httpsclient.setCACert(PRIMARY_OTA_CERT);
   }
   if (!httpsclient.connect("ota.wardriver.uk", 443)){
     Serial.println("failed");
-    use_fallback_cert = true;
-    return false;
+    if (!use_fallback_cert){
+      Serial.println("Will retry using fallback cert");
+      use_fallback_cert = true;
+      return ota_get_url(url);
+    } else {
+      return "";
+    }
   } else {
-    httpsclient.println("GET / HTTP/1.0");
+    httpsclient.print("GET ");
+    httpsclient.print(url);
+    httpsclient.println(" HTTP/1.0");
     httpsclient.println("Host: ota.wardriver.uk");
     httpsclient.println("Connection: close");
     httpsclient.print("User-Agent: ");
@@ -204,12 +218,25 @@ boolean contact_ota_server(){
     httpsclient.println(VERSION);
     httpsclient.println();
   }
+  String return_out = "";
+  boolean headers_ended = false;
   while (httpsclient.connected()){
     String buff = httpsclient.readStringUntil('\n');
     Serial.println(buff);
+    if (buff == "\r" || buff == "\n" || buff.length() == 0){
+      headers_ended = true;
+      Serial.println("END OF HEADER^");
+      continue;
+    }
+    if (headers_ended){
+      return_out.concat(buff);
+      if (return_out.length() > 1024){
+        return return_out;
+      }
+    }
   }
-  Serial.println("Done talking to OTA server");
-  return true;
+  Serial.println("OTA contact end");
+  return return_out;
 }
 
 void setup_wifi(){
@@ -280,6 +307,29 @@ static void print_hex(const char *title, const unsigned char buf[], size_t len)
     Serial.println();
 }
 
+int online_hash_check(String check_hash){
+  String url = "/hashes/";
+  url.concat(check_hash);
+  url.concat(".txt");
+  
+  String result = ota_get_url(url);
+  Serial.println("Got OTA hash check response:");
+  Serial.println(result);
+  if (result == ""){
+    return 2;
+  }
+  String checkfor = "OKHASH>";
+  checkfor.concat(check_hash);
+  if (result.indexOf(checkfor) > -1){
+    return 0;
+  } else {
+    return 1;
+  }
+
+
+  return 10;
+}
+
 boolean install_firmware(String filepath, String expect_hash = "") {
   //Install a .bin binary to the local device.
   //If expect_hash is not empty, the hash will be validated first.
@@ -302,6 +352,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
   if (enforce_valid_binary_checksums) {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
+    int check_result = online_hash_check(actual_hash);
+    
   }
 
   if (filepath == "/A.bin"){
@@ -798,11 +850,8 @@ void boot_config(){
         Serial.print("Time is now set to ");
         Serial.println(epoch);
         Serial.println("Continuing..");
-        boolean contacted = contact_ota_server();
-        if (!contacted){
-          //A failure will automatically choose the fallback cert preference, so we can immediately retry.
-          contact_ota_server();
-        }
+        String ota_test = ota_get_url("/");
+        Serial.println(ota_test);
       }
       unsigned long disconnectat = millis() + web_timeout;
       String buff;
@@ -930,11 +979,21 @@ void boot_config(){
                     //In future lets iterate *.bin
                     if (SD.exists("/A.bin")){
                       String filehash = file_hash("/A.bin");
-                      client.println("<tr><td>A.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                      int check_result = online_hash_check(filehash);
+                      String color = "red";
+                      if (check_result == 0){
+                        color = "green";
+                      }
+                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
-                      client.println("<tr><td>B.bin</td><td>" + filehash + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                      int check_result = online_hash_check(filehash);
+                      String color = "red";
+                      if (check_result == 0){
+                        color = "green";
+                      }
+                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr>");
                   }

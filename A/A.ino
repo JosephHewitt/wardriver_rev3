@@ -185,7 +185,7 @@ SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
 
 // END CERTIFICATES
 
-String ota_get_url(String url){
+String ota_get_url(String url, String write_to=""){
   clear_display();
   display.println("Contacting server");
   display.display();
@@ -225,21 +225,98 @@ String ota_get_url(String url){
   boolean headers_ended = false;
   while (httpsclient.connected()){
     String buff = httpsclient.readStringUntil('\n');
-    Serial.println(buff);
     if (buff == "\r" || buff == "\n" || buff.length() == 0){
       headers_ended = true;
       Serial.println("END OF HEADER^");
-      continue;
+      if (write_to == ""){
+        continue;
+      }
     }
     if (headers_ended){
-      return_out.concat(buff);
-      if (return_out.length() > 1024){
-        return return_out;
+      if (write_to == ""){
+        return_out.concat(buff);
+        return_out.concat('\n');
+        if (return_out.length() > 1024){
+          return return_out;
+        }
+      } else {
+        SD.remove(write_to);
+        File fw_writer = SD.open(write_to, FILE_WRITE);
+        unsigned long lastbyte = millis();
+        while (httpsclient.connected() && (millis() - lastbyte) < 1000){
+          if (httpsclient.available()){
+            byte c = httpsclient.read();
+            fw_writer.write(c);
+            lastbyte = millis();
+          }
+        }
+        fw_writer.flush();
+        fw_writer.close();
       }
     }
   }
   Serial.println("OTA contact end");
   return return_out;
+}
+
+void check_for_updates(boolean stable=true){
+  String res = ota_get_url("/latest.txt");
+  Serial.println("Update list res:");
+  Serial.println(res);
+  
+  int cur = 0;
+  String partbuf = "";
+  boolean reading_stable = false;
+  int linecount = 0;
+  int partcount = 0;
+  boolean update_available = false;
+  while (cur <= res.length()){
+    char c = res.charAt(cur);
+    if (c == '>' || c == '\n'){
+      //Handle partbuf.
+      Serial.print("PBUF");
+      Serial.print(linecount);
+      Serial.print("/");
+      Serial.print(partcount);
+      Serial.print(":");
+      Serial.println(partbuf);
+      if (partbuf == "SR"){
+        reading_stable = true;
+      }
+      if (partbuf == "PR"){
+        reading_stable = false;
+      }
+
+      if (stable == reading_stable){
+        //This is the branch we are interested in
+        if (partcount == 1){
+          //VERSION
+          if (partbuf != VERSION){
+            update_available = true;
+          }
+        }
+        if (update_available){
+          if (partcount == 5){
+            ota_get_url(partbuf, "/A.bin");
+          }
+          if (partcount == 6){
+            ota_get_url(partbuf, "/B.bin");
+          }
+        }
+      }
+      
+      partbuf = "";
+      partcount++;
+      if (c == '\n'){
+        linecount++;
+        partcount = 0;
+      }
+    } else {
+      partbuf.concat(c);
+    }
+
+    cur++;
+  }
 }
 
 void setup_wifi(){
@@ -856,6 +933,7 @@ void boot_config(){
         Serial.println("Continuing..");
         String ota_test = ota_get_url("/");
         Serial.println(ota_test);
+        check_for_updates();
       }
       unsigned long disconnectat = millis() + web_timeout;
       String buff;

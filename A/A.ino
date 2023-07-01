@@ -32,6 +32,10 @@ String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
 
+//Automatically set by the OTA update check with the latest version numbers.
+String ota_latest_stable = "";
+String ota_latest_beta = "";
+
 //Automatically set to true if a blocklist was loaded.
 boolean use_blocklist = false;
 //millis() when the last block happened.
@@ -311,6 +315,14 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
         reading_stable = false;
       }
 
+      if (partcount == 1){
+        if (reading_stable){
+          ota_latest_stable = partbuf;
+        } else {
+          ota_latest_beta = partbuf;
+        }
+      }
+
       if (stable == reading_stable){
         //This is the branch we are interested in
         if (partcount == 1){
@@ -417,7 +429,8 @@ static void print_hex(const char *title, const unsigned char buf[], size_t len)
     Serial.println();
 }
 
-int online_hash_check(String check_hash){
+String online_hash_check(String check_hash){
+  //Return "" for invalid hashes, or a human-readable message about the release.
   String url = "/hashes/";
   url.concat(check_hash);
   url.concat(".txt");
@@ -426,18 +439,33 @@ int online_hash_check(String check_hash){
   Serial.println("Got OTA hash check response:");
   Serial.println(result);
   if (result == ""){
-    return 2;
+    return "";
   }
   String checkfor = "OKHASH>";
   checkfor.concat(check_hash);
   if (result.indexOf(checkfor) > -1){
-    return 0;
+    int version_pos = result.indexOf("VERS>")+5;
+    int date_pos = result.indexOf("DATE>")+5;
+    String retmsg = "Valid official release ";
+    if (version_pos > -1 && date_pos > -1){
+      int version_end_pos = result.indexOf("\n",version_pos);
+      int date_end_pos = result.indexOf("\n",date_pos);
+      String release_version = result.substring(version_pos, version_end_pos);
+      retmsg.concat(release_version);
+      retmsg.concat(" from ");
+      retmsg.concat(result.substring(date_pos, date_end_pos));
+      retmsg.concat(". ");
+      if (release_version != ota_latest_stable && release_version != ota_latest_beta){
+        retmsg.concat("<a href=\"/repupdate\">Newer version available</a>");
+      }
+    }
+    return retmsg;
   } else {
-    return 1;
+    return "";
   }
 
 
-  return 10;
+  return "";
 }
 
 boolean install_firmware(String filepath, String expect_hash = "") {
@@ -463,7 +491,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
     
-    //int check_result = online_hash_check(actual_hash);
+    //String check_result = online_hash_check(actual_hash);
     
   }
 
@@ -1044,6 +1072,11 @@ void boot_config(){
                     client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head>");
                     if (update_available && !SD.exists("/A.bin") && !SD.exists("/B.bin")){
                       client.println("<p><a href=\"/dlupdate\">Software update available. Click here to download.</a></p>");
+                      client.print("<p>Latest version: ");
+                      client.print(ota_latest_stable);
+                      client.print(" / Latest beta: ");
+                      client.print(ota_latest_beta);
+                      client.println("</p>");
                     } else {
                       if (created_network){
                         client.println("<p>This device can check for updates automatically if connected to the internet.</p>");
@@ -1101,6 +1134,19 @@ void boot_config(){
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
                   }
 
+                  if (buff.indexOf("GET /repupdate") > -1){
+                    //Would be really great to stop hardcoding this one day.
+                    Serial.println("Replace updates requested");
+                    SD.remove("/A.bin");
+                    SD.remove("/B.bin");
+                    client.println("Content-type: text/html");
+                    client.println();
+                    client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/dlupdate\" />Redirecting..");
+                    client.flush();
+                    delay(5);
+                    client.stop();
+                  }
+
                   if (buff.indexOf("GET /dlupdate") > -1){
                     client.println("Content-type: text/html");
                     client.println();
@@ -1133,26 +1179,26 @@ void boot_config(){
                     //In future lets iterate *.bin
                     if (SD.exists("/A.bin")){
                       String filehash = file_hash("/A.bin");
-                      int check_result = online_hash_check(filehash);
+                      String check_result = online_hash_check(filehash);
                       String color = "red";
                       String emoji = "&#9888;"; //warning
-                      if (check_result == 0){
+                      if (check_result != ""){
                         color = "green";
                         emoji = "&#128274;"; //lock
                       }
-                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
                       client.flush();
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
-                      int check_result = online_hash_check(filehash);
+                      String check_result = online_hash_check(filehash);
                       String color = "red";
                       String emoji = "&#9888;"; //warning
-                      if (check_result == 0){
+                      if (check_result != ""){
                         color = "green";
                         emoji = "&#128274;"; //lock
                       }
-                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr></body>");
                     

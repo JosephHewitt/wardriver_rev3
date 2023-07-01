@@ -1042,12 +1042,16 @@ void boot_config(){
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
                     client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head>");
-                    if (update_available){
+                    if (update_available && !SD.exists("/A.bin") && !SD.exists("/B.bin")){
                       client.println("<p><a href=\"/dlupdate\">Software update available. Click here to download.</a></p>");
                     } else {
                       if (created_network){
                         client.println("<p>This device can check for updates automatically if connected to the internet.</p>");
                       }
+                    }
+                    //We really need to stop hardcoding these :)
+                    if (SD.exists("/A.bin") || SD.exists("/B.bin")){
+                      client.println("<p>A software update is ready. <a href=\"/fwup\">click here to view</a></p>");
                     }
                     client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
@@ -1086,7 +1090,10 @@ void boot_config(){
                       }
                     }
                     client.print("</table><br><hr>");
-                    client.print("<input type=\"file\" id=\"file\" /><button id=\"read-file\">Read File</button>");
+                    client.print("<h2>Upload firmware</h2>");
+                    client.print("<p>Your wardriver will automatically find new updates, but you can also manually upload them using this form</p>");
+                    client.print("<input type=\"file\" id=\"file\" /><br><button id=\"read-file\">Read File</button>");
+                    client.print("<p>The upload will take 1-3 minutes and there is no progress bar in this browser, check the wardriver LCD during upload</p>");
                     client.print("<br><br>v");
                     client.println(VERSION);
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
@@ -1099,6 +1106,7 @@ void boot_config(){
                     client.println();
                     Serial.println("/dlupdate requested");
                     client.print("<h1>Downloading updates. Check the wardriver LCD for progress</h1>");
+                    client.print("Check <a href=\"/fwup\">this page</a> once the download is complete");
                     client.print("\n\r\n\r");
                     client.flush();
                     delay(5);
@@ -1187,6 +1195,10 @@ void boot_config(){
                     }
                     File binwriter = SD.open(newname, FILE_WRITE);
 
+                    clear_display();
+                    display.println("Firmware upload");
+                    display.display();
+
                     //Setup a hash context, and somewhere to keep the output.
                     unsigned char genhash[32];
                     mbedtls_sha256_context ctx;
@@ -1195,14 +1207,23 @@ void boot_config(){
 
                     unsigned long fw_last_byte = millis();
                     byte bbuf[2] = {0x00, 0x00};
+                    unsigned long bytesin = 0;
                     while (1) {
                       if (client.available()){
                         byte c = client.read();
+                        bytesin++;
                         binwriter.write(c);
                         bbuf[0] = c;
                         mbedtls_sha256_update(&ctx, bbuf, 1);
                         
                         fw_last_byte = millis();
+                        if (bytesin % 4096 == 0){
+                          clear_display();
+                          display.println("Firmware upload");
+                          display.print(bytesin / 1024);
+                          display.println("kb received");
+                          display.display();
+                        }
                       }
                       if (millis() - fw_last_byte > 4000){
                         Serial.println("Done");

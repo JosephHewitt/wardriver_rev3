@@ -185,7 +185,7 @@ SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
 
 // END CERTIFICATES
 
-String ota_get_url(String url){
+String ota_get_url(String url, String write_to=""){
   clear_display();
   display.println("Contacting server");
   display.display();
@@ -223,23 +223,130 @@ String ota_get_url(String url){
   }
   String return_out = "";
   boolean headers_ended = false;
+  unsigned long content_length_long = 0;
   while (httpsclient.connected()){
     String buff = httpsclient.readStringUntil('\n');
-    Serial.println(buff);
+    if (!headers_ended){
+      Serial.println(buff);
+    }
     if (buff == "\r" || buff == "\n" || buff.length() == 0){
       headers_ended = true;
       Serial.println("END OF HEADER^");
-      continue;
+      if (write_to == ""){
+        continue;
+      }
+    }
+    if (!headers_ended){
+      int clpos = buff.indexOf("Content-Length: ");
+      if (clpos > -1){
+        String content_length = buff.substring(clpos+16);
+        Serial.print("CL:");
+        Serial.println(content_length);
+        content_length_long = content_length.toInt();
+      }
     }
     if (headers_ended){
-      return_out.concat(buff);
-      if (return_out.length() > 1024){
-        return return_out;
+      if (write_to == ""){
+        return_out.concat(buff);
+        return_out.concat('\n');
+        if (return_out.length() > 1024){
+          return return_out;
+        }
+      } else {
+        SD.remove(write_to);
+        File fw_writer = SD.open(write_to, FILE_WRITE);
+        unsigned long lastbyte = millis();
+        unsigned long bytecounter = 0;
+        while (httpsclient.connected() && (millis() - lastbyte) < 10000){
+          if (httpsclient.available()){
+            byte c = httpsclient.read();
+            bytecounter++;
+            fw_writer.write(c);
+            lastbyte = millis();
+            float percent = ((float)bytecounter / (float)content_length_long) * 100;
+            if (bytecounter % 6000 == 0){
+              clear_display();
+              display.print("Downloading ");
+              display.println(write_to);
+              display.print(percent);
+              display.println("%");
+              display.display();
+            }
+          }
+        }
+        fw_writer.flush();
+        fw_writer.close();
       }
     }
   }
   Serial.println("OTA contact end");
   return return_out;
+}
+
+boolean check_for_updates(boolean stable=true, boolean download_now=false){
+  String res = ota_get_url("/latest.txt");
+  Serial.println("Update list res:");
+  Serial.println(res);
+  
+  int cur = 0;
+  String partbuf = "";
+  boolean reading_stable = false;
+  int linecount = 0;
+  int partcount = 0;
+  boolean update_available = false;
+  while (cur <= res.length()){
+    char c = res.charAt(cur);
+    if (c == '>' || c == '\n'){
+      //Handle partbuf.
+      Serial.print("PBUF");
+      Serial.print(linecount);
+      Serial.print("/");
+      Serial.print(partcount);
+      Serial.print(":");
+      Serial.println(partbuf);
+      if (partbuf == "SR"){
+        reading_stable = true;
+      }
+      if (partbuf == "PR"){
+        reading_stable = false;
+      }
+
+      if (stable == reading_stable){
+        //This is the branch we are interested in
+        if (partcount == 1){
+          //VERSION
+          if (partbuf != VERSION){
+            update_available = true;
+          }
+        }
+        if (update_available){
+          if (partcount == 5){
+            if (download_now){
+              ota_get_url(partbuf, "/A.bin");
+            }
+          }
+          if (partcount == 6){
+            if (download_now){
+              ota_get_url(partbuf, "/B.bin");
+            }
+          }
+        }
+      }
+      
+      partbuf = "";
+      partcount++;
+      if (c == '\n'){
+        linecount++;
+        partcount = 0;
+      }
+    } else {
+      partbuf.concat(c);
+    }
+
+    cur++;
+  }
+  
+  return update_available;
 }
 
 void setup_wifi(){
@@ -808,6 +915,11 @@ void boot_config(){
   fb_ssid = get_config_string("fb_ssid", fb_ssid);
   fb_psk = get_config_string("fb_psk", fb_psk);
   boolean created_network = false; //Set to true automatically when the fallback network is created.
+  
+  boolean is_stable = true; //Currently running beta or stable, set automatically
+  if (VERSION.indexOf("b") > -1){
+    is_stable = false;
+  }
 
   if (con_ssid != "" || fb_ssid != ""){
     Serial.print("Attempting to connect to WiFi");
@@ -841,6 +953,7 @@ void boot_config(){
       created_network = true;
     }
     Serial.println();
+    boolean update_available = false;
     if (WiFi.status() == WL_CONNECTED || created_network == true){
       IPAddress fb_IP = WiFi.softAPIP();
       clear_display();
@@ -856,6 +969,8 @@ void boot_config(){
         Serial.println("Continuing..");
         String ota_test = ota_get_url("/");
         Serial.println(ota_test);
+
+        update_available = check_for_updates(is_stable, false);
       }
       unsigned long disconnectat = millis() + web_timeout;
       String buff;
@@ -926,8 +1041,19 @@ void boot_config(){
                     client.println();
                     Serial.println("Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head><table>");
-                    client.println("<tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head>");
+                    if (update_available && !SD.exists("/A.bin") && !SD.exists("/B.bin")){
+                      client.println("<p><a href=\"/dlupdate\">Software update available. Click here to download.</a></p>");
+                    } else {
+                      if (created_network){
+                        client.println("<p>This device can check for updates automatically if connected to the internet.</p>");
+                      }
+                    }
+                    //We really need to stop hardcoding these :)
+                    if (SD.exists("/A.bin") || SD.exists("/B.bin")){
+                      client.println("<p>A software update is ready. <a href=\"/fwup\">click here to view</a></p>");
+                    }
+                    client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
@@ -964,7 +1090,10 @@ void boot_config(){
                       }
                     }
                     client.print("</table><br><hr>");
-                    client.print("<input type=\"file\" id=\"file\" /><button id=\"read-file\">Read File</button>");
+                    client.print("<h2>Upload firmware</h2>");
+                    client.print("<p>Your wardriver will automatically find new updates, but you can also manually upload them using this form</p>");
+                    client.print("<input type=\"file\" id=\"file\" /><br><button id=\"read-file\">Read File</button>");
+                    client.print("<p>The upload will take 1-3 minutes and there is no progress bar in this browser, check the wardriver LCD during upload</p>");
                     client.print("<br><br>v");
                     client.println(VERSION);
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
@@ -972,14 +1101,35 @@ void boot_config(){
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
                   }
 
+                  if (buff.indexOf("GET /dlupdate") > -1){
+                    client.println("Content-type: text/html");
+                    client.println();
+                    Serial.println("/dlupdate requested");
+                    client.print("<h1>Downloading updates. Check the wardriver LCD for progress</h1>");
+                    client.print("Check <a href=\"/fwup\">this page</a> once the download is complete");
+                    client.print("\n\r\n\r");
+                    client.flush();
+                    delay(5);
+                    client.stop();
+                    check_for_updates(is_stable, true);
+                  }
+
                   if (buff.indexOf("GET /fwup") > -1){
                     client.println("Content-type: text/html");
                     client.println();
                     Serial.println("Sending FW update page");
-                    client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head><table>");
-                    client.println("<tr><th>Filename</th><th>SHA256</th><th>Opt</th></tr>");
+                    client.println("<style>#hide{display:none}html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head>");
+                    client.println("<body><p>This page may take a while to load since hashes are generated for each file.</p>");
+                    client.println("Check the wardriver LCD for progress updates.</p><br>");
+                    client.println("<table><tr><th>Filename</th><th>SHA256</th><th>Opt</th></tr>");
                     client.flush();
+                    for (int x = 0; x < 32; x++){
+                      //Add some rows which often triggers rendering, these are invisible.
+                      client.println("<tr id=\"hide\"><td>-</td><td>-</td><td>-</td></tr>");
+                    }
+                    client.flush();
+
                     //In future lets iterate *.bin
                     if (SD.exists("/A.bin")){
                       String filehash = file_hash("/A.bin");
@@ -991,6 +1141,7 @@ void boot_config(){
                         emoji = "&#128274;"; //lock
                       }
                       client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                      client.flush();
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
@@ -1003,7 +1154,8 @@ void boot_config(){
                       }
                       client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
-                    client.println("</tr>");
+                    client.println("</tr></body>");
+                    
                   }
 
                   if (buff.indexOf("GET /fwins") > -1) {
@@ -1053,6 +1205,10 @@ void boot_config(){
                     }
                     File binwriter = SD.open(newname, FILE_WRITE);
 
+                    clear_display();
+                    display.println("Firmware upload");
+                    display.display();
+
                     //Setup a hash context, and somewhere to keep the output.
                     unsigned char genhash[32];
                     mbedtls_sha256_context ctx;
@@ -1061,14 +1217,23 @@ void boot_config(){
 
                     unsigned long fw_last_byte = millis();
                     byte bbuf[2] = {0x00, 0x00};
+                    unsigned long bytesin = 0;
                     while (1) {
                       if (client.available()){
                         byte c = client.read();
+                        bytesin++;
                         binwriter.write(c);
                         bbuf[0] = c;
                         mbedtls_sha256_update(&ctx, bbuf, 1);
                         
                         fw_last_byte = millis();
+                        if (bytesin % 4096 == 0){
+                          clear_display();
+                          display.println("Firmware upload");
+                          display.print(bytesin / 1024);
+                          display.println("kb received");
+                          display.display();
+                        }
                       }
                       if (millis() - fw_last_byte > 4000){
                         Serial.println("Done");

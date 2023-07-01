@@ -1118,10 +1118,18 @@ void boot_config(){
                     client.println("Content-type: text/html");
                     client.println();
                     Serial.println("Sending FW update page");
-                    client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
-                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head><table>");
-                    client.println("<tr><th>Filename</th><th>SHA256</th><th>Opt</th></tr>");
+                    client.println("<style>#hide{display:none}html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
+                    client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head>");
+                    client.println("<body><p>This page may take a while to load since hashes are generated for each file.</p>");
+                    client.println("Check the wardriver LCD for progress updates.</p><br>");
+                    client.println("<table><tr><th>Filename</th><th>SHA256</th><th>Opt</th></tr>");
                     client.flush();
+                    for (int x = 0; x < 32; x++){
+                      //Add some rows which often triggers rendering, these are invisible.
+                      client.println("<tr id=\"hide\"><td>-</td><td>-</td><td>-</td></tr>");
+                    }
+                    client.flush();
+
                     //In future lets iterate *.bin
                     if (SD.exists("/A.bin")){
                       String filehash = file_hash("/A.bin");
@@ -1133,6 +1141,7 @@ void boot_config(){
                         emoji = "&#128274;"; //lock
                       }
                       client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                      client.flush();
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
@@ -1145,7 +1154,8 @@ void boot_config(){
                       }
                       client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
-                    client.println("</tr>");
+                    client.println("</tr></body>");
+                    
                   }
 
                   if (buff.indexOf("GET /fwins") > -1) {

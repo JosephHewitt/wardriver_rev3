@@ -257,7 +257,7 @@ String ota_get_url(String url, String write_to=""){
         File fw_writer = SD.open(write_to, FILE_WRITE);
         unsigned long lastbyte = millis();
         unsigned long bytecounter = 0;
-        while (httpsclient.connected() && (millis() - lastbyte) < 1000){
+        while (httpsclient.connected() && (millis() - lastbyte) < 10000){
           if (httpsclient.available()){
             byte c = httpsclient.read();
             bytecounter++;

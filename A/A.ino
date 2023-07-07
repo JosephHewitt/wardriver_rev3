@@ -537,6 +537,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     display.println("Restarting now");
     display.display();
     delay(1000);
+    SD.remove("/A.bin");
     ESP.restart();
   
     return true;
@@ -569,11 +570,16 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         Serial.println(buff);
         buff = "";
         linecounter++;
+        clear_display();
+        display.println("Getting B ready");
+        display.print("Attempt: ");
+        display.println(ready_failures);
+        display.display();
       }
       if (!update_ready){
         ready_failures++;
       }
-      if (ready_failures > 9){
+      if (ready_failures > 99){
         Serial.println("Unable to configure B!");
         Serial.println("Likely B is outdated, does not support OTA, and must be updated manually");
         clear_display();
@@ -587,14 +593,20 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     }
     //At this point, B side is in update mode.
     Serial.println("B is ready");
-    clear_display();
-    display.println("B is ready");
-    display.println("Please wait");
-    display.display();
+    
     //0xE9 is the binary header, let's spam something else to be sure we're clear of junk
     for(int i=0; i<3000; i++){
       Serial1.write(0xFF);
       Serial1.flush();
+      if (i % 100 == 0 || i < 2){
+        clear_display();
+        display.println("B is ready");
+        display.println("Please wait");
+        display.print(i);
+        display.print(" / ");
+        display.println("3000");
+        display.display();
+      }
       delay(1);
     }
     //B will sense 0xFF -> 0xE9 and start the update.
@@ -680,6 +692,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         display.display();
         delay(4000);
         did_update = true;
+        SD.remove("/B.bin");
         return true;
       }
       if (transfer_success == false && tocounter > 40){

@@ -32,6 +32,10 @@ String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
 
+//Automatically set by the OTA update check with the latest version numbers.
+String ota_latest_stable = "";
+String ota_latest_beta = "";
+
 //Automatically set to true if a blocklist was loaded.
 boolean use_blocklist = false;
 //millis() when the last block happened.
@@ -108,6 +112,7 @@ const char* ntpServer = "pool.ntp.org";
 TaskHandle_t primary_scan_loop_handle;
 
 boolean b_working = false; //Set to true when we receive some valid data from side B.
+boolean ota_optout = false; //Set in the web interface
 
 #define DEVICE_UNKNOWN 254
 #define DEVICE_CUSTOM  0
@@ -161,31 +166,35 @@ IY8r4D96F4ocMmptiPuXifjDkGbXPqfnJhwhaMA=
 
 static const char *FALLBACK_OTA_CERT = R"EOF(
 -----BEGIN CERTIFICATE-----
-MIIDeTCCAmGgAwIBAgIUGYewdq7AvB2vvsbAUHlWjCDKOxwwDQYJKoZIhvcNAQEL
+MIIDeTCCAmGgAwIBAgIUVVQV77r10CIDzeIiJGof4TbN6c8wDQYJKoZIhvcNAQEL
 BQAwTDELMAkGA1UEBhMCTkwxCzAJBgNVBAgMAlpIMRUwEwYDVQQKDAx3YXJkcml2
-ZXIudWsxGTAXBgNVBAMMEG90YS53YXJkcml2ZXIudWswHhcNMjMwNjA4MjExMTU2
-WhcNMjUwMTI4MjExMTU2WjBMMQswCQYDVQQGEwJOTDELMAkGA1UECAwCWkgxFTAT
+ZXIudWsxGTAXBgNVBAMMEG90YS53YXJkcml2ZXIudWswHhcNMjMwNzA4MTc0NjIx
+WhcNMjUwMjI3MTc0NjIxWjBMMQswCQYDVQQGEwJOTDELMAkGA1UECAwCWkgxFTAT
 BgNVBAoMDHdhcmRyaXZlci51azEZMBcGA1UEAwwQb3RhLndhcmRyaXZlci51azCC
-ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgho/33AY1ebgflGyhA9eU+
-/ze4j8BA5FYfbnYleV/LJ6BsP4a6E57e8szsa2DUZ/0jIzdF6QHz/XxUFNQC+5Od
-/LueI/sdu+Z4phClu6fQoPgtCvPaGgtb5OGeUpljIw7h4GZVMVwK3tqkG8JESRD1
-FQg3fCXKxMXRU+dNzzEIUR191+vWLuv9D2ZFsQEmU5HRQTbF0sDw5kzcYCdDoiJW
-ixrKhhxj81pwr4PAh+mPLtOQtV9Ok4knIImlLD/8nwwdbHFJYQK5d7feZ5Mw3cY8
-wbujUe3p/bDYbGFXU5LsN7Cba9E0lm+WqrnT+td78w6vMROG9rtLQRnncGxjAw0C
-AwEAAaNTMFEwHQYDVR0OBBYEFOTsW5Mm++U6HZMZWeHx2uJPf+3dMB8GA1UdIwQY
-MBaAFOTsW5Mm++U6HZMZWeHx2uJPf+3dMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
-hvcNAQELBQADggEBAFugISxQgZ7HPTZwhDweFyea6fp1P5yXMqGfF6aNp4Fo0Tyn
-6i4df2w5Cem32uxKDXNPPqwk6GGBIVHmcOD3AkwEqmPEX4PRd879BUv7P/A8QZEx
-7ZsKdqOaD0BXvbcJnj38fFSQ6DRHqfQIWXgv6/ZADtUsCFToGxhM5TAppEGuFFJN
-8SqCY3vyWW9Ww4oRLwPek5PwZCde1yHmBpgsTnyIFlYxptacAUuDO1zrWhva6cvd
-8K6xHONtkySMAlt8k59rP/qKMIVMDoyZ7VM/0sN871DkDqarqvf4SM+Qkb8dPs0B
-SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOIc25lsZ2DUBkPgXh79wJK9
+qm4SbpznQXfhevCOQvQrIk3aD2K1J2C+6hK8ORzl8YYyu5KRWWf9t3XrB2PHWw5c
+t4/LhXl/DXSE25RHqr9+ZW2fv26/1p8rjOY7tA2iTGDrBkuED9pQL9lJcBty4In3
+tWP/eUQezmKsMLBTTRRwN3EvylwOikIpK6nEsxQ3SxMp2lq7lVg5g5aGWb9OYzCY
+kcglSJf6bTlmyQQz/qPJ9zyyHGogL8ktSqcutAPRMXmMUvpeMtABH4Ej75etrjQp
+8xp3pbRCoKJtVWd0x48sY4vLXhqNRf+GuXrJTK1CldmAyIhUmNHYzYde0BS53GsC
+AwEAAaNTMFEwHQYDVR0OBBYEFJbqVybpgKmbP50jP93J8/k6DxDMMB8GA1UdIwQY
+MBaAFJbqVybpgKmbP50jP93J8/k6DxDMMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBADdYOy4mUdmfBzBhJV5pS1ch+AzRD9dTtP/wP9RdzzXXy03t
+54DuM9Xld2evRbhKRRvT1r5GaWoPVWgg7D0Iy4yw08Q91AaOhOpknRyL4KJm4mYs
+4Y9hcGn0dqFsTkRqCkPxTDi0bE9n2ssNsjYupHKSzawM+ESTcXDrAACyAwGLOvvZ
+/pVgZwdi/DGnFk7hn9s9A5+regXDRnUt36TDH2ArAdGHJIl64n+UtpOCoYUIbRA+
+XECvNDA4pMiGiTyH3kPsCeoVK+PY7YX1TMg9gY3QbobSHh4LJ2zH6I+kqDhej/Nr
+f0PDdGbXj3H6v/r3fk8syofQM1stfmta/HVCBAo=
 -----END CERTIFICATE-----
 )EOF";
 
 // END CERTIFICATES
 
 String ota_get_url(String url, String write_to=""){
+  if (ota_optout){
+    Serial.println("OTA optout");
+    return "";
+  }
   clear_display();
   display.println("Contacting server");
   display.display();
@@ -311,6 +320,14 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
         reading_stable = false;
       }
 
+      if (partcount == 1){
+        if (reading_stable){
+          ota_latest_stable = partbuf;
+        } else {
+          ota_latest_beta = partbuf;
+        }
+      }
+
       if (stable == reading_stable){
         //This is the branch we are interested in
         if (partcount == 1){
@@ -417,7 +434,8 @@ static void print_hex(const char *title, const unsigned char buf[], size_t len)
     Serial.println();
 }
 
-int online_hash_check(String check_hash){
+String online_hash_check(String check_hash){
+  //Return "" for invalid hashes, or a human-readable message about the release.
   String url = "/hashes/";
   url.concat(check_hash);
   url.concat(".txt");
@@ -426,18 +444,33 @@ int online_hash_check(String check_hash){
   Serial.println("Got OTA hash check response:");
   Serial.println(result);
   if (result == ""){
-    return 2;
+    return "";
   }
   String checkfor = "OKHASH>";
   checkfor.concat(check_hash);
   if (result.indexOf(checkfor) > -1){
-    return 0;
+    int version_pos = result.indexOf("VERS>")+5;
+    int date_pos = result.indexOf("DATE>")+5;
+    String retmsg = "Valid official release ";
+    if (version_pos > -1 && date_pos > -1){
+      int version_end_pos = result.indexOf("\n",version_pos);
+      int date_end_pos = result.indexOf("\n",date_pos);
+      String release_version = result.substring(version_pos, version_end_pos);
+      retmsg.concat(release_version);
+      retmsg.concat(" from ");
+      retmsg.concat(result.substring(date_pos, date_end_pos));
+      retmsg.concat(". ");
+      if (release_version != ota_latest_stable && release_version != ota_latest_beta){
+        retmsg.concat("<a href=\"/repupdate\">Newer version available</a>");
+      }
+    }
+    return retmsg;
   } else {
-    return 1;
+    return "";
   }
 
 
-  return 10;
+  return "";
 }
 
 boolean install_firmware(String filepath, String expect_hash = "") {
@@ -463,7 +496,11 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
     
-    //int check_result = online_hash_check(actual_hash);
+    String check_result = online_hash_check(actual_hash);
+    if (check_result == ""){
+      Serial.println("Strict online hash check mismatch, aborting");
+      return false;
+    }
     
   }
 
@@ -509,6 +546,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     display.println("Restarting now");
     display.display();
     delay(1000);
+    SD.remove("/A.bin");
     ESP.restart();
   
     return true;
@@ -541,11 +579,16 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         Serial.println(buff);
         buff = "";
         linecounter++;
+        clear_display();
+        display.println("Getting B ready");
+        display.print("Attempt: ");
+        display.println(ready_failures);
+        display.display();
       }
       if (!update_ready){
         ready_failures++;
       }
-      if (ready_failures > 9){
+      if (ready_failures > 99){
         Serial.println("Unable to configure B!");
         Serial.println("Likely B is outdated, does not support OTA, and must be updated manually");
         clear_display();
@@ -559,14 +602,20 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     }
     //At this point, B side is in update mode.
     Serial.println("B is ready");
-    clear_display();
-    display.println("B is ready");
-    display.println("Please wait");
-    display.display();
+    
     //0xE9 is the binary header, let's spam something else to be sure we're clear of junk
     for(int i=0; i<3000; i++){
       Serial1.write(0xFF);
       Serial1.flush();
+      if (i % 100 == 0 || i < 2){
+        clear_display();
+        display.println("B is ready");
+        display.println("Please wait");
+        display.print(i);
+        display.print(" / ");
+        display.println("3000");
+        display.display();
+      }
       delay(1);
     }
     //B will sense 0xFF -> 0xE9 and start the update.
@@ -652,6 +701,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         display.display();
         delay(4000);
         did_update = true;
+        SD.remove("/B.bin");
         return true;
       }
       if (transfer_success == false && tocounter > 40){
@@ -718,6 +768,7 @@ void boot_config(){
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
 
   preferences.begin("wardriver", false);
+  ota_optout = preferences.getBool("ota_optout", false);
   bool firstrun = preferences.getBool("first", true);
   if (block_reconfigure){
     firstrun = false;
@@ -801,9 +852,10 @@ void boot_config(){
 
               if (buff.indexOf("GET / HTTP") > -1) {
                 Serial.println("Sending FTS homepage");
-                client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
+                client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>First time setup</h2>");
-                client.print("Please provide the credentials of your WiFi network to get started.<br>");
+                client.print("<p>Please provide the credentials of your WiFi network to get started.</p>");
+                client.print("<p>You can use this network to get your captured data, sync the date/time, and to download updates</p><br>");
                 if (n > 0){
                   client.println("<script>function ssid_selected(obj){");
                   client.println("document.getElementById(\"ssid\").value = obj.value;");
@@ -819,14 +871,22 @@ void boot_config(){
                   }
                   client.println("</select>");
                 }
-                client.print("<form method=\"get\" action=\"/wifi\">SSID:<input type=\"text\" name=\"ssid\" id=\"ssid\"><br>PSK:<input type=\"password\" name=\"psk\" id=\"psk\"><br><input type=\"submit\" value=\"Submit\"></form>");
+                client.print("<form method=\"get\" action=\"/wifi\">WiFi Name (SSID):<input type=\"text\" name=\"ssid\" id=\"ssid\"><br>WiFi Password (PSK):<input type=\"password\" name=\"psk\" id=\"psk\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"otaoptout\"><input type=\"checkbox\" id=\"otaoptout\" name=\"otaoptout\" value=\"otaoptout\"> Disable OTA updates*</label></p></form>");
                 client.print("<a href=\"/wifi?ssid=&psk=\">Continue without network</a>");
-                client.print("<br><hr>Additional help is available at http://wardriver.uk<br>v");
+                client.print("<br><hr>Additional help is available at https://wardriver.uk<br>v");
                 client.print(VERSION);
+                client.print("<br><p>*Please see https://wardriver.uk/ota for more information about the OTA update function. Disabling it is not recommended.</p>");
               }
 
               if (buff.indexOf("GET /wifi?") > -1){
                 Serial.println("Got WiFi config");
+                if (buff.indexOf("&otaoptout=otaoptout") > -1){
+                  ota_optout = true;
+                  //This only makes me want to switch to POST even more.
+                  buff.replace("&otaoptout=otaoptout","");
+                  preferences.putBool("ota_optout", true);
+                  Serial.println("OTA opt out selected");
+                }
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
                 String new_ssid = GP_urldecode(buff.substring(startpos,endpos));
@@ -984,12 +1044,14 @@ void boot_config(){
           display.println(fb_ssid);
           display.println(fb_IP);
         } else {
-          display.println("Connected");
+          display.println(device_type_string());
           display.println(WiFi.localIP());
         }
         display.print((disconnectat - millis())/1000);
         display.println("s until boot");
-        display.print(device_type_string());
+        if (update_available){
+          display.println("Update available");
+        }
         display.display();
         
         if (millis() > disconnectat){
@@ -1020,8 +1082,7 @@ void boot_config(){
               if (first_byte){
                 first_byte = false;
                 Serial.println("Got first byte of request");
-                display.println("..got one");
-                display.println("Handling..");
+                display.println("Handling request..");
                 display.display();
               }
               char c = client.read();
@@ -1044,6 +1105,11 @@ void boot_config(){
                     client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head>");
                     if (update_available && !SD.exists("/A.bin") && !SD.exists("/B.bin")){
                       client.println("<p><a href=\"/dlupdate\">Software update available. Click here to download.</a></p>");
+                      client.print("<p>Latest version: ");
+                      client.print(ota_latest_stable);
+                      client.print(" / Latest beta: ");
+                      client.print(ota_latest_beta);
+                      client.println("</p>");
                     } else {
                       if (created_network){
                         client.println("<p>This device can check for updates automatically if connected to the internet.</p>");
@@ -1053,6 +1119,10 @@ void boot_config(){
                     if (SD.exists("/A.bin") || SD.exists("/B.bin")){
                       client.println("<p>A software update is ready. <a href=\"/fwup\">click here to view</a></p>");
                     }
+                    if (ota_optout){
+                      client.println("<p>OTA updates are turned off: <a href=\"/ota_change_pref\">Opt-in</a></p>");
+                    }
+                    
                     client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
@@ -1090,6 +1160,9 @@ void boot_config(){
                       }
                     }
                     client.print("</table><br><hr>");
+                    if (!ota_optout){
+                      client.println("<p>No longer want OTA updates? <a href=\"/ota_change_pref\">Opt-out</a></p>");
+                    }
                     client.print("<h2>Upload firmware</h2>");
                     client.print("<p>Your wardriver will automatically find new updates, but you can also manually upload them using this form</p>");
                     client.print("<input type=\"file\" id=\"file\" /><br><button id=\"read-file\">Read File</button>");
@@ -1099,6 +1172,19 @@ void boot_config(){
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
                     //Also a snippet to force binary uploads instead of multipart.
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
+                  }
+
+                  if (buff.indexOf("GET /repupdate") > -1){
+                    //Would be really great to stop hardcoding this one day.
+                    Serial.println("Replace updates requested");
+                    SD.remove("/A.bin");
+                    SD.remove("/B.bin");
+                    client.println("Content-type: text/html");
+                    client.println();
+                    client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/dlupdate\" />Redirecting..");
+                    client.flush();
+                    delay(5);
+                    client.stop();
                   }
 
                   if (buff.indexOf("GET /dlupdate") > -1){
@@ -1112,6 +1198,17 @@ void boot_config(){
                     delay(5);
                     client.stop();
                     check_for_updates(is_stable, true);
+                  }
+
+                  if (buff.indexOf("GET /ota_change_pref") > -1){
+                    Serial.println("Toggle OTA prefs");
+                    ota_optout = !ota_optout;
+                    client.println("Content-type: text/html");
+                    client.println();
+                    client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    client.flush();
+                    preferences.putBool("ota_optout", ota_optout);
+                    
                   }
 
                   if (buff.indexOf("GET /fwup") > -1){
@@ -1133,26 +1230,26 @@ void boot_config(){
                     //In future lets iterate *.bin
                     if (SD.exists("/A.bin")){
                       String filehash = file_hash("/A.bin");
-                      int check_result = online_hash_check(filehash);
+                      String check_result = online_hash_check(filehash);
                       String color = "red";
                       String emoji = "&#9888;"; //warning
-                      if (check_result == 0){
+                      if (check_result != ""){
                         color = "green";
                         emoji = "&#128274;"; //lock
                       }
-                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>A.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/A.bin\">Install</a></td></tr>");
                       client.flush();
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
-                      int check_result = online_hash_check(filehash);
+                      String check_result = online_hash_check(filehash);
                       String color = "red";
                       String emoji = "&#9888;"; //warning
-                      if (check_result == 0){
+                      if (check_result != ""){
                         color = "green";
                         emoji = "&#128274;"; //lock
                       }
-                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p></td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr></body>");
                     
@@ -1179,7 +1276,14 @@ void boot_config(){
                       client.flush();
                       delay(5);
                       client.stop();
-                      install_firmware(fw_filename, expect_hash);
+                      boolean install_result = install_firmware(fw_filename, expect_hash);
+                      if (!install_result){
+                        Serial.println("Update failed");
+                        clear_display();
+                        display.println("Update failed");
+                        display.display();
+                        delay(5000);
+                      }
                     } else {
                       client.print("<h1>Error verifying update</h1>");
                     }

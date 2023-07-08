@@ -112,6 +112,7 @@ const char* ntpServer = "pool.ntp.org";
 TaskHandle_t primary_scan_loop_handle;
 
 boolean b_working = false; //Set to true when we receive some valid data from side B.
+boolean ota_optout = false; //Set in the web interface
 
 #define DEVICE_UNKNOWN 254
 #define DEVICE_CUSTOM  0
@@ -190,6 +191,10 @@ SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
 // END CERTIFICATES
 
 String ota_get_url(String url, String write_to=""){
+  if (ota_optout){
+    Serial.println("OTA optout");
+    return "";
+  }
   clear_display();
   display.println("Contacting server");
   display.display();
@@ -491,7 +496,11 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
     
-    //String check_result = online_hash_check(actual_hash);
+    String check_result = online_hash_check(actual_hash);
+    if (check_result == ""){
+      Serial.println("Strict online hash check mismatch, aborting");
+      return false;
+    }
     
   }
 
@@ -759,6 +768,7 @@ void boot_config(){
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
 
   preferences.begin("wardriver", false);
+  ota_optout = preferences.getBool("ota_optout", false);
   bool firstrun = preferences.getBool("first", true);
   if (block_reconfigure){
     firstrun = false;
@@ -842,9 +852,10 @@ void boot_config(){
 
               if (buff.indexOf("GET / HTTP") > -1) {
                 Serial.println("Sending FTS homepage");
-                client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
+                client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>First time setup</h2>");
-                client.print("Please provide the credentials of your WiFi network to get started.<br>");
+                client.print("<p>Please provide the credentials of your WiFi network to get started.</p><br>");
+                client.print("<p>You can use this network to get your captured data, sync the date/time, and to download updates</p>");
                 if (n > 0){
                   client.println("<script>function ssid_selected(obj){");
                   client.println("document.getElementById(\"ssid\").value = obj.value;");
@@ -860,14 +871,21 @@ void boot_config(){
                   }
                   client.println("</select>");
                 }
-                client.print("<form method=\"get\" action=\"/wifi\">SSID:<input type=\"text\" name=\"ssid\" id=\"ssid\"><br>PSK:<input type=\"password\" name=\"psk\" id=\"psk\"><br><input type=\"submit\" value=\"Submit\"></form>");
+                client.print("<form method=\"get\" action=\"/wifi\">WiFi Name (SSID):<input type=\"text\" name=\"ssid\" id=\"ssid\"><br>WiFi Password (PSK):<input type=\"password\" name=\"psk\" id=\"psk\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"otaoptout\"><input type=\"checkbox\" id=\"otaoptout\" name=\"otaoptout\" value=\"otaoptout\"> Disable OTA updates*</label></p></form>");
                 client.print("<a href=\"/wifi?ssid=&psk=\">Continue without network</a>");
-                client.print("<br><hr>Additional help is available at http://wardriver.uk<br>v");
+                client.print("<br><hr>Additional help is available at https://wardriver.uk<br>v");
                 client.print(VERSION);
+                client.print("<br><p>*Please see https://wardriver.uk/ota for more information about the OTA update function. Disabling it is not recommended.</p>");
               }
 
               if (buff.indexOf("GET /wifi?") > -1){
                 Serial.println("Got WiFi config");
+                if (buff.indexOf("&otaoptout=otaoptout") > -1){
+                  ota_optout = true;
+                  //This only makes me want to switch to POST even more.
+                  buff.replace("&otaoptout=otaoptout","");
+                  preferences.putBool("ota_optout", true);
+                }
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
                 String new_ssid = GP_urldecode(buff.substring(startpos,endpos));
@@ -1238,7 +1256,14 @@ void boot_config(){
                       client.flush();
                       delay(5);
                       client.stop();
-                      install_firmware(fw_filename, expect_hash);
+                      boolean install_result = install_firmware(fw_filename, expect_hash);
+                      if (!install_result){
+                        Serial.println("Update failed");
+                        clear_display();
+                        display.println("Update failed");
+                        display.display();
+                        delay(5000);
+                      }
                     } else {
                       client.print("<h1>Error verifying update</h1>");
                     }

@@ -166,25 +166,25 @@ IY8r4D96F4ocMmptiPuXifjDkGbXPqfnJhwhaMA=
 
 static const char *FALLBACK_OTA_CERT = R"EOF(
 -----BEGIN CERTIFICATE-----
-MIIDeTCCAmGgAwIBAgIUGYewdq7AvB2vvsbAUHlWjCDKOxwwDQYJKoZIhvcNAQEL
+MIIDeTCCAmGgAwIBAgIUVVQV77r10CIDzeIiJGof4TbN6c8wDQYJKoZIhvcNAQEL
 BQAwTDELMAkGA1UEBhMCTkwxCzAJBgNVBAgMAlpIMRUwEwYDVQQKDAx3YXJkcml2
-ZXIudWsxGTAXBgNVBAMMEG90YS53YXJkcml2ZXIudWswHhcNMjMwNjA4MjExMTU2
-WhcNMjUwMTI4MjExMTU2WjBMMQswCQYDVQQGEwJOTDELMAkGA1UECAwCWkgxFTAT
+ZXIudWsxGTAXBgNVBAMMEG90YS53YXJkcml2ZXIudWswHhcNMjMwNzA4MTc0NjIx
+WhcNMjUwMjI3MTc0NjIxWjBMMQswCQYDVQQGEwJOTDELMAkGA1UECAwCWkgxFTAT
 BgNVBAoMDHdhcmRyaXZlci51azEZMBcGA1UEAwwQb3RhLndhcmRyaXZlci51azCC
-ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgho/33AY1ebgflGyhA9eU+
-/ze4j8BA5FYfbnYleV/LJ6BsP4a6E57e8szsa2DUZ/0jIzdF6QHz/XxUFNQC+5Od
-/LueI/sdu+Z4phClu6fQoPgtCvPaGgtb5OGeUpljIw7h4GZVMVwK3tqkG8JESRD1
-FQg3fCXKxMXRU+dNzzEIUR191+vWLuv9D2ZFsQEmU5HRQTbF0sDw5kzcYCdDoiJW
-ixrKhhxj81pwr4PAh+mPLtOQtV9Ok4knIImlLD/8nwwdbHFJYQK5d7feZ5Mw3cY8
-wbujUe3p/bDYbGFXU5LsN7Cba9E0lm+WqrnT+td78w6vMROG9rtLQRnncGxjAw0C
-AwEAAaNTMFEwHQYDVR0OBBYEFOTsW5Mm++U6HZMZWeHx2uJPf+3dMB8GA1UdIwQY
-MBaAFOTsW5Mm++U6HZMZWeHx2uJPf+3dMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
-hvcNAQELBQADggEBAFugISxQgZ7HPTZwhDweFyea6fp1P5yXMqGfF6aNp4Fo0Tyn
-6i4df2w5Cem32uxKDXNPPqwk6GGBIVHmcOD3AkwEqmPEX4PRd879BUv7P/A8QZEx
-7ZsKdqOaD0BXvbcJnj38fFSQ6DRHqfQIWXgv6/ZADtUsCFToGxhM5TAppEGuFFJN
-8SqCY3vyWW9Ww4oRLwPek5PwZCde1yHmBpgsTnyIFlYxptacAUuDO1zrWhva6cvd
-8K6xHONtkySMAlt8k59rP/qKMIVMDoyZ7VM/0sN871DkDqarqvf4SM+Qkb8dPs0B
-SqZWZQqJWbu6u0Z6hsuB60QccttAMK3LjEu2Y1w=
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOIc25lsZ2DUBkPgXh79wJK9
+qm4SbpznQXfhevCOQvQrIk3aD2K1J2C+6hK8ORzl8YYyu5KRWWf9t3XrB2PHWw5c
+t4/LhXl/DXSE25RHqr9+ZW2fv26/1p8rjOY7tA2iTGDrBkuED9pQL9lJcBty4In3
+tWP/eUQezmKsMLBTTRRwN3EvylwOikIpK6nEsxQ3SxMp2lq7lVg5g5aGWb9OYzCY
+kcglSJf6bTlmyQQz/qPJ9zyyHGogL8ktSqcutAPRMXmMUvpeMtABH4Ej75etrjQp
+8xp3pbRCoKJtVWd0x48sY4vLXhqNRf+GuXrJTK1CldmAyIhUmNHYzYde0BS53GsC
+AwEAAaNTMFEwHQYDVR0OBBYEFJbqVybpgKmbP50jP93J8/k6DxDMMB8GA1UdIwQY
+MBaAFJbqVybpgKmbP50jP93J8/k6DxDMMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBADdYOy4mUdmfBzBhJV5pS1ch+AzRD9dTtP/wP9RdzzXXy03t
+54DuM9Xld2evRbhKRRvT1r5GaWoPVWgg7D0Iy4yw08Q91AaOhOpknRyL4KJm4mYs
+4Y9hcGn0dqFsTkRqCkPxTDi0bE9n2ssNsjYupHKSzawM+ESTcXDrAACyAwGLOvvZ
+/pVgZwdi/DGnFk7hn9s9A5+regXDRnUt36TDH2ArAdGHJIl64n+UtpOCoYUIbRA+
+XECvNDA4pMiGiTyH3kPsCeoVK+PY7YX1TMg9gY3QbobSHh4LJ2zH6I+kqDhej/Nr
+f0PDdGbXj3H6v/r3fk8syofQM1stfmta/HVCBAo=
 -----END CERTIFICATE-----
 )EOF";
 
@@ -1044,12 +1044,14 @@ void boot_config(){
           display.println(fb_ssid);
           display.println(fb_IP);
         } else {
-          display.println("Connected");
+          display.println(device_type_string());
           display.println(WiFi.localIP());
         }
         display.print((disconnectat - millis())/1000);
         display.println("s until boot");
-        display.print(device_type_string());
+        if (update_available){
+          display.println("Update available");
+        }
         display.display();
         
         if (millis() > disconnectat){
@@ -1080,8 +1082,7 @@ void boot_config(){
               if (first_byte){
                 first_byte = false;
                 Serial.println("Got first byte of request");
-                display.println("..got one");
-                display.println("Handling..");
+                display.println("Handling request..");
                 display.display();
               }
               char c = client.read();

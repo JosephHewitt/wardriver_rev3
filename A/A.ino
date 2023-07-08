@@ -854,8 +854,8 @@ void boot_config(){
                 Serial.println("Sending FTS homepage");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>First time setup</h2>");
-                client.print("<p>Please provide the credentials of your WiFi network to get started.</p><br>");
-                client.print("<p>You can use this network to get your captured data, sync the date/time, and to download updates</p>");
+                client.print("<p>Please provide the credentials of your WiFi network to get started.</p>");
+                client.print("<p>You can use this network to get your captured data, sync the date/time, and to download updates</p><br>");
                 if (n > 0){
                   client.println("<script>function ssid_selected(obj){");
                   client.println("document.getElementById(\"ssid\").value = obj.value;");
@@ -885,6 +885,7 @@ void boot_config(){
                   //This only makes me want to switch to POST even more.
                   buff.replace("&otaoptout=otaoptout","");
                   preferences.putBool("ota_optout", true);
+                  Serial.println("OTA opt out selected");
                 }
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
@@ -1117,6 +1118,10 @@ void boot_config(){
                     if (SD.exists("/A.bin") || SD.exists("/B.bin")){
                       client.println("<p>A software update is ready. <a href=\"/fwup\">click here to view</a></p>");
                     }
+                    if (ota_optout){
+                      client.println("<p>OTA updates are turned off: <a href=\"/ota_change_pref\">Opt-in</a></p>");
+                    }
+                    
                     client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
@@ -1154,6 +1159,9 @@ void boot_config(){
                       }
                     }
                     client.print("</table><br><hr>");
+                    if (!ota_optout){
+                      client.println("<p>No longer want OTA updates? <a href=\"/ota_change_pref\">Opt-out</a></p>");
+                    }
                     client.print("<h2>Upload firmware</h2>");
                     client.print("<p>Your wardriver will automatically find new updates, but you can also manually upload them using this form</p>");
                     client.print("<input type=\"file\" id=\"file\" /><br><button id=\"read-file\">Read File</button>");
@@ -1189,6 +1197,17 @@ void boot_config(){
                     delay(5);
                     client.stop();
                     check_for_updates(is_stable, true);
+                  }
+
+                  if (buff.indexOf("GET /ota_change_pref") > -1){
+                    Serial.println("Toggle OTA prefs");
+                    ota_optout = !ota_optout;
+                    client.println("Content-type: text/html");
+                    client.println();
+                    client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    client.flush();
+                    preferences.putBool("ota_optout", ota_optout);
+                    
                   }
 
                   if (buff.indexOf("GET /fwup") > -1){

@@ -434,6 +434,15 @@ static void print_hex(const char *title, const unsigned char buf[], size_t len)
     Serial.println();
 }
 
+String html_escape(String ret){
+  ret.replace("<","&lt;");
+  ret.replace(">","&gt;");
+  ret.replace("&","&amp;");
+  ret.replace("\"","&quot;");
+  ret.replace("'","&#39;");
+  return ret;
+}
+
 String online_hash_check(String check_hash){
   //Return "" for invalid hashes, or a human-readable message about the release.
   String url = "/hashes/";
@@ -456,9 +465,12 @@ String online_hash_check(String check_hash){
       int version_end_pos = result.indexOf("\n",version_pos);
       int date_end_pos = result.indexOf("\n",date_pos);
       String release_version = result.substring(version_pos, version_end_pos);
+      String release_datetime = result.substring(date_pos, date_end_pos);
+      release_version = html_escape(release_version);
+      release_datetime = html_escape(release_datetime);
       retmsg.concat(release_version);
       retmsg.concat(" from ");
-      retmsg.concat(result.substring(date_pos, date_end_pos));
+      retmsg.concat(release_datetime);
       retmsg.concat(". ");
       if (release_version != ota_latest_stable && release_version != ota_latest_beta){
         retmsg.concat("<a href=\"/repupdate\">Newer version available</a>");
@@ -497,6 +509,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //Fail here if the checksum is a mismatch.
     
     String check_result = online_hash_check(actual_hash);
+    Serial.print("Online check: ");
+    Serial.println(check_result);
     if (check_result == ""){
       Serial.println("Strict online hash check mismatch, aborting");
       return false;
@@ -1152,11 +1166,13 @@ void boot_config(){
                         client.print(get_latest_datetime(filename, false));
                         client.print("</td>");
                         client.print("<td>");
-                        client.print("<a href=\"/delete?fn=");
-                        client.print(filename);
-                        client.print("\">");
-                        client.print("DEL</a></td>");
-                        client.println("</tr>");
+                        if (filename.endsWith(".bin") || filename.endsWith(".csv")){
+                          client.print("<a href=\"/delete?fn=");
+                          client.print(filename);
+                          client.print("\">");
+                          client.print("DEL</a>");
+                        }
+                        client.println("</td></tr>");
                       }
                     }
                     client.print("</table><br><hr>");
@@ -1400,6 +1416,16 @@ void boot_config(){
                     int endpos = buff.indexOf(" ",startpos);
                     String filename = buff.substring(startpos,endpos);
                     Serial.println(filename);
+                    if (!filename.endsWith(".csv") && !filename.endsWith(".bin")){
+                      //Prevent accessing non-csv files, with the exception of test.txt
+                      client.println("Content-type: text/html");
+                      client.println();
+                      client.print("Not allowed");
+                      client.flush();
+                      delay(5);
+                      client.stop();
+                    }
+                    
                     SD.remove(filename);
                     client.println("Content-type: text/html");
                     client.println();
@@ -1416,6 +1442,15 @@ void boot_config(){
                     int endpos = buff.indexOf(" ",startpos);
                     String filename = buff.substring(startpos,endpos);
                     Serial.println(filename);
+                    if (!filename.endsWith(".csv") && filename != "/test.txt"){
+                      //Prevent accessing non-csv files, with the exception of test.txt
+                      client.println("Content-type: text/html");
+                      client.println();
+                      client.print("Not allowed");
+                      client.flush();
+                      delay(5);
+                      client.stop();
+                    }
 
                     File reader = SD.open(filename, FILE_READ);
                     if (!reader){

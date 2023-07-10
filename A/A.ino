@@ -496,11 +496,13 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
     
-    String check_result = online_hash_check(actual_hash);
+    /*String check_result = online_hash_check(actual_hash);
     if (check_result == ""){
       Serial.println("Strict online hash check mismatch, aborting");
       return false;
-    }
+    }*/
+
+    //This feature causes a crash. Likely because of too much memory being used or being too many functions deep.
     
   }
 

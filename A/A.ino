@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.2.0b1";
+const String VERSION = "1.2.0b2";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -508,13 +508,13 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
     
-    String check_result = online_hash_check(actual_hash);
-    Serial.print("Online check: ");
-    Serial.println(check_result);
+    /*String check_result = online_hash_check(actual_hash);
     if (check_result == ""){
       Serial.println("Strict online hash check mismatch, aborting");
       return false;
-    }
+    }*/
+
+    //This feature causes a crash. Likely because of too much memory being used or being too many functions deep.
     
   }
 
@@ -740,7 +740,7 @@ String hex_str(const unsigned char buf[], size_t len)
     String outstr;
     char outchr[6];
     for (size_t i = 0; i < len; i++) {
-        if (buf[i] < 0xF) {
+        if (buf[i] <= 0xF) {
             sprintf(outchr, "0%x", buf[i]);
         } else {
             sprintf(outchr, "%x", buf[i]);

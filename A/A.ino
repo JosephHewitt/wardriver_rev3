@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.2.0b2";
+const String VERSION = "1.2.0b3";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -1713,27 +1713,28 @@ void primary_scan_loop(void * parameter){
       if (n > 0){
         wifi_count = wifi_count + n;
         for (int i = 0; i < n; i++) {
-          if (seen_mac(WiFi.BSSID(i))){
+          uint8_t *this_bssid_raw = WiFi.BSSID(i);
+          char this_bssid[18] = {0};
+          sprintf(this_bssid, "%02X:%02X:%02X:%02X:%02X:%02X", this_bssid_raw[0], this_bssid_raw[1], this_bssid_raw[2], this_bssid_raw[3], this_bssid_raw[4], this_bssid_raw[5]);
+          
+          if (seen_mac(this_bssid_raw)){
             //Skip any APs which we've already logged.
             continue;
           }
           //Save the AP MAC inside the history buffer so we know it's logged.
-          save_mac(WiFi.BSSID(i));
+          save_mac(this_bssid_raw);
 
           String ssid = WiFi.SSID(i);
           ssid.replace(",","_");
+          
           if (use_blocklist){
             if (is_blocked(ssid)){
-              Serial.print("BLOCK: ");
-              Serial.println(ssid);
               wifi_block_at = millis();
               continue;
             }
-            String tmp_mac_str = WiFi.BSSIDstr(i).c_str();
+            String tmp_mac_str = String(this_bssid);
             tmp_mac_str.toUpperCase();
             if (is_blocked(tmp_mac_str)){
-              Serial.print("BLOCK: ");
-              Serial.println(tmp_mac_str);
               wifi_block_at = millis();
               continue;
             }

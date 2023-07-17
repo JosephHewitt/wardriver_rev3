@@ -1520,6 +1520,18 @@ void boot_config(){
   preferences.end();
 }
 
+void push_config(String key){
+  //Send a config option to side B.
+  String value = get_config_option(key);
+  Serial1.print("PUSH:");
+  Serial1.print(key);
+  Serial1.print("=");
+  Serial1.println(value);
+  Serial1.flush();
+  Serial.print("Pushing config ");
+  Serial.println(key);
+}
+
 void setup() {
     setup_wifi();
     delay(500);
@@ -1630,6 +1642,13 @@ void setup() {
         delay(4000);
       }
     }
+
+    while (millis() < 7000){
+      //Side B will be ready after this long
+      yield();
+    }
+
+    push_config("sb_bw16");
     
     boot_config();
     setup_wifi();

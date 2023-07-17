@@ -425,6 +425,7 @@ void loop() {
 
 void loop2( void * parameter) {
   boolean had_gsm_data = false;
+  int count_5ghz = 0;
   while (true) {
     while (Serial1.available()){
       //ESP A rarely talks to us, but it's usually important
@@ -497,14 +498,11 @@ void loop2( void * parameter) {
         int enc_type = 0;
         String mac = "";
         String lbuff_str = String(linebuf);
-        Serial.print("Processing line:");
-        Serial.println(lbuff_str);
 
         #define mac_len 18
 
         mac = lbuff_str.substring(lbuff_str.length()-mac_len);
-        Serial.print("MAC=");
-        Serial.println(mac);
+        mac.toUpperCase();
 
         int pos = mac_len+1;
         int previous_pos = pos;
@@ -517,10 +515,7 @@ void loop2( void * parameter) {
 
           counter++;
           String match = lbuff_str.substring(lbuff_str.length()-pos+1, lbuff_str.length()-previous_pos);
-          Serial.print("Match ");
-          Serial.print(counter);
-          Serial.print(" is:");
-          Serial.println(match);
+          
 
           if (counter == 1){
             //RSSI
@@ -547,6 +542,9 @@ void loop2( void * parameter) {
           if (counter == 3){
             //Channel
             channel = match.toInt();
+            if (channel > 14){
+              count_5ghz++;
+            }
 
             int comma_pos = lbuff_str.indexOf(",")+1;
 
@@ -565,6 +563,20 @@ void loop2( void * parameter) {
         Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), channel, rssi, enc_type, mac.c_str());
         serial_lock = false;
        }
+      } else {
+        //Short line, normally we discard this
+        if (using_bw16){
+          String tmp = String(linebuf);
+          if (tmp.indexOf("[ATWS]") > -1){
+            had_gsm_data = true;
+            Serial1.print("5G,");
+            Serial1.print(count_5ghz);
+            Serial1.print("\n");
+            Serial.print("BW16 done, 5GHz count: ");
+            Serial.println(count_5ghz);
+            count_5ghz = 0;
+          }
+        }
       }
     } else {
       if (last_sim_request == 0 || millis() - last_sim_request > 15000 || had_gsm_data == true){

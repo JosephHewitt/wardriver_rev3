@@ -135,7 +135,7 @@ String hex_str(const unsigned char buf[], size_t len)
     String outstr;
     char outchr[6];
     for (size_t i = 0; i < len; i++) {
-        if (buf[i] < 0xF) {
+        if (buf[i] <= 0xF) {
             sprintf(outchr, "0%x", buf[i]);
         } else {
             sprintf(outchr, "%x", buf[i]);

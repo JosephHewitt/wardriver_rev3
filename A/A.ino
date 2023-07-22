@@ -48,10 +48,12 @@ unsigned long wifi_block_at = 0;
 //These variables are used to populate the LCD with statistics.
 float temperature;
 unsigned int ble_count;
+unsigned int count_5ghz;
 unsigned int gsm_count;
 unsigned int wifi_count;
 unsigned int disp_gsm_count;
 unsigned int disp_wifi_count;
+boolean is_5ghz = false;
 
 uint32_t chip_id;
 
@@ -117,11 +119,12 @@ TaskHandle_t primary_scan_loop_handle;
 boolean b_working = false; //Set to true when we receive some valid data from side B.
 boolean ota_optout = false; //Set in the web interface
 
-#define DEVICE_UNKNOWN 254
-#define DEVICE_CUSTOM  0
-#define DEVICE_REV3    1
-#define DEVICE_REV3_5  2
-#define DEVICE_REV4    3
+#define DEVICE_UNKNOWN   254
+#define DEVICE_CUSTOM    0
+#define DEVICE_REV3      1
+#define DEVICE_REV3_5    2
+#define DEVICE_REV4      3
+#define DEVICE_REV3_5GM  4
 byte DEVICE_TYPE = DEVICE_UNKNOWN;
 
 #define HTTP_TIMEOUT_MS 750
@@ -781,6 +784,11 @@ void boot_config(){
   web_timeout = get_config_int("web_timeout", web_timeout);
   gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
+
+  boolean sb_bw16 = get_config_bool("sb_bw16", false);
+  if (sb_bw16){
+    is_5ghz = true;
+  }
 
   preferences.begin("wardriver", false);
   ota_optout = preferences.getBool("ota_optout", false);
@@ -1532,6 +1540,13 @@ void push_config(String key){
   Serial.println(key);
 }
 
+void send_config_to_b(){
+  //This will be called when B requests it and at boot.
+  //This should contain a bunch of push_config(xx) options.
+  Serial.println("Sending config options to B..");
+  push_config("sb_bw16");
+}
+
 void setup() {
     setup_wifi();
     delay(500);
@@ -1648,7 +1663,7 @@ void setup() {
       yield();
     }
 
-    push_config("sb_bw16");
+    send_config_to_b();
     
     boot_config();
     setup_wifi();
@@ -1785,8 +1800,12 @@ void lcd_show_stats(){
   if (wifi_did_block){
     display.print("X");
   }
+  if (is_5ghz){
+    display.print("|");
+    display.print(count_5ghz);
+  }
   if (int(temperature) != 0){
-    display.print(" Temp:");
+    display.print(" T:");
     display.print(temperature);
     display.print("c");
   }
@@ -2046,6 +2065,11 @@ String parse_bside_line(String buff){
   */
   
   String out = "";
+  if (buff.indexOf("SEND_CONF") > -1) {
+    send_config_to_b();
+    return out;
+  }
+  
   if (buff.indexOf("BL,") > -1) {
     
     int startpos = buff.indexOf("BL,")+3;
@@ -2245,6 +2269,16 @@ String parse_bside_line(String buff){
     Serial.print("Bluetooth count = ");
     Serial.println(ble_count);
     b_working = true;
+  }
+
+  if (buff.indexOf("5G,") > -1) {
+    int startpos = buff.indexOf("5G,")+3;
+    String count_5ghz_str = buff.substring(startpos);
+    count_5ghz = count_5ghz_str.toInt();
+    Serial.print("5GHz count = ");
+    Serial.println(count_5ghz);
+    b_working = true;
+    is_5ghz = true;
   }
   
   return out;
@@ -2665,6 +2699,10 @@ String device_type_string(){
       ret = "rev3 5GHz";
       break;
 
+    case DEVICE_REV3_5GM:
+      ret = "rev3 5GHz (mod)";
+      break;
+
     case DEVICE_REV4:
       ret = "rev4";
       break;
@@ -2684,6 +2722,11 @@ byte identify_model(){
   //Block until we know for sure what hardware model this is. Can take a while so cache the response.
   //Return a byte indicating the model, such as DEVICE_REV3.
   //Only call *before* the main loops start, otherwise multiple threads could be trying to access the serial.
+
+  if (is_5ghz && DEVICE_TYPE == DEVICE_REV3){
+    //We already determined we're REV3, but now we have 5Ghz. Must be modded.
+    DEVICE_TYPE = DEVICE_REV3_5GM;
+  }
 
   if (DEVICE_TYPE != DEVICE_UNKNOWN){
     //We already know.
@@ -2713,10 +2756,6 @@ byte identify_model(){
         if (buff.indexOf("REV3!") > -1){
           Serial.println("Identified Rev3");
           return DEVICE_REV3;
-        }
-        if (buff.indexOf("5GHz,") > -1){
-          Serial.println("Identified Rev3 5Ghz (cm)");
-          return DEVICE_REV3_5;
         }
         if (buff.indexOf("!REV3.5") > -1){
           Serial.println("Identified Rev3 5Ghz");

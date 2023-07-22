@@ -157,8 +157,9 @@ void setup() {
   Serial1.println("REV3!");
 
   Serial.println("Waiting for config vars");
+  Serial1.println("SEND_CONF");
   Serial1.flush();
-  while (millis() < 9000){
+  while (millis() < 11000){
     String buff = Serial1.readStringUntil('\n');
     Serial.print("IN:");
     Serial.println(buff);

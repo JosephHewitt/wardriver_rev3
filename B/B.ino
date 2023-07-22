@@ -441,52 +441,15 @@ void loop2( void * parameter) {
       }
       
     }
-    if (Serial2.available()){
-      char linebuf[120];
-      int i = 0;
-      int linelen = 0;
-      int no_data_times = 0;
-      int attempt_times = 120;
-      if (using_bw16){
-        attempt_times = 4000;
-      }
-      while (i < attempt_times){
-        if (Serial2.available()){
-          char c = Serial2.read();
-          if (c == '\n'){
-            Serial.print("Read from SIM: ");
-            Serial.print(i);
-            Serial.println(" bytes");
-            linebuf[i] = '\0';
-            break;
-          }
-          linebuf[i] = c;
-          i++;
-        } else {
-          no_data_times++;
-          if (no_data_times > 500){
-            break;
-          }
-          if (!using_bw16){
-            delay(2);
-          }
-        }
-      }
-     linelen = i;
-     i = 0;
-     if (linelen > 30){
+    String s2buf = Serial2.readStringUntil('\n');
+    if (s2buf.length() >= 2){
+      
+     if (s2buf.length() > 30){
        if (!using_bw16){
          await_serial();
          serial_lock = true;
          Serial1.print("GSM,");
-         while (i < linelen){
-          char c = linebuf[i];
-          if (c == '\0' || c == '\r' || c == '\n'){
-            break;
-          }
-          Serial1.write(c);
-          i++;
-         }
+         Serial1.print(s2buf);
          had_gsm_data = true;
          Serial1.println();
          serial_lock = false;
@@ -497,24 +460,23 @@ void loop2( void * parameter) {
         int rssi = 0;
         int enc_type = 0;
         String mac = "";
-        String lbuff_str = String(linebuf);
 
         #define mac_len 18
 
-        mac = lbuff_str.substring(lbuff_str.length()-mac_len);
+        mac = s2buf.substring(s2buf.length()-mac_len);
         mac.toUpperCase();
 
         int pos = mac_len+1;
         int previous_pos = pos;
         int counter = 0;
-        while (pos <= lbuff_str.length()){
+        while (pos <= s2buf.length()){
           pos++;
-          if (lbuff_str.charAt(lbuff_str.length()-pos) != ','){
+          if (s2buf.charAt(s2buf.length()-pos) != ','){
             continue;
           }
 
           counter++;
-          String match = lbuff_str.substring(lbuff_str.length()-pos+1, lbuff_str.length()-previous_pos);
+          String match = s2buf.substring(s2buf.length()-pos+1, s2buf.length()-previous_pos);
           
 
           if (counter == 1){
@@ -546,9 +508,9 @@ void loop2( void * parameter) {
               count_5ghz++;
             }
 
-            int comma_pos = lbuff_str.indexOf(",")+1;
+            int comma_pos = s2buf.indexOf(",")+1;
 
-            ssid = lbuff_str.substring(comma_pos, lbuff_str.length()-pos);
+            ssid = s2buf.substring(comma_pos, s2buf.length()-pos);
           }
           if (counter >= 4){
             break;
@@ -566,8 +528,7 @@ void loop2( void * parameter) {
       } else {
         //Short line, normally we discard this
         if (using_bw16){
-          String tmp = String(linebuf);
-          if (tmp.indexOf("[ATWS]") > -1){
+          if (s2buf.indexOf("[ATWS]") > -1){
             had_gsm_data = true;
             Serial1.print("5G,");
             Serial1.print(count_5ghz);

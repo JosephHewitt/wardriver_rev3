@@ -1812,7 +1812,7 @@ void lcd_show_stats(){
   display.println();
   if (nmea.getHDOP() < 250 && nmea.getNumSatellites() > 0){
     display.print("HDOP:");
-    display.print(nmea.getHDOP());
+    display.print(((float)nmea.getHDOP()/10));
     display.print(" Sats:");
     display.print(nmea.getNumSatellites());
     display.println(nmea.getNavSystem());

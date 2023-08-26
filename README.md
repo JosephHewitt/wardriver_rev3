@@ -13,7 +13,7 @@ For information about the Wardriver hardware, please see [the official wiki](htt
 
 The `main` branch of this project is the testing/alpha branch; you should only use it if you are contributing code or want to help debug the latest features. Please use the `Releases` tab on the right to download stable versions.
 
-The `main` branch is tesed for issues on every pull request, see the status of this test below:
+The `main` branch is tested for issues on every pull request, see the status of this test below:
 
 ![CI Status Badge](https://github.com/JosephHewitt/wardriver_rev3/actions/workflows/arduinobuild.yml/badge.svg)
 
@@ -24,7 +24,7 @@ The wardriver.uk uses 2 generic ESP32-DevKitC V4 development boards with an ESP3
 
 You can edit this list by opening the Arduino IDE preferences with ```File -> Preferences```
 
-You then need to open the Board Manager at ```Tools -> Board -> Boards Manager``` and search for "ESP32". Please install version 2.0.7.
+You then need to open the Board Manager at ```Tools -> Board -> Boards Manager``` and search for "ESP32". The required version number to install can be found in the file `boards.txt` but it is generally the latest available version.
 
 Instructions to install the ESP32 board definitions are also available on this [espressif.com docs page](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html#installing-using-boards-manager)
 
@@ -35,6 +35,8 @@ In order for the project to compile, you need to download the following librarie
 - [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306) v2.5.x by Adafruit
 - [OneWire](https://www.pjrc.com/teensy/td_libs_OneWire.html) at least v2.3.7 by Paul Stoffregen
 - [GParser](https://github.com/GyverLibs/GParser) v1.4.x by AlexGyver
+
+You can find the exact version number which should be installed in the file `libraries.txt`.
 
 If using the official PCB, the code in "B" corresponds to the board soldered above the silkscreen text "Made by Joseph Hewitt". The source file "A" is for the remaining ESP32. You may flash the boards when they are soldered to the PCB or before soldering -- it's your choice.
 
@@ -61,7 +63,7 @@ This method was released very recently and has not been fully tested so some iss
 
 This method requires [Python 3.7](https://www.python.org/downloads/) (or newer) and [esptool 4.5](https://docs.espressif.com/projects/esptool/en/latest/esp32/installation.html) (or newer) to be installed on your computer. After installing Python, it is highly recommended to install esptool with `pip install esptool` to ensure you have a modern version. You should be able to run `esptool.py` in your Terminal / Command Prompt.
 
-Once installed, download the `build.zip` file from the release you want to install (see the releases tab on the right and look inside the `Assets` dropdown).
+Once installed, download the `build.zip` file from the release you want to install (see the releases tab on the right and look inside the `Assets` dropdown). Only releases after v1.2.0b1 have binaries available to download.
 
 Unzip the downloaded file into a new folder somewhere easily accessible. Open this folder in your Terminal / Command Prompt (eg, run `cd path/to/folder`).
 
@@ -81,21 +83,19 @@ On some ESP32 boards, it is necessary to hold the "boot" button when first conne
 
 You may need to install drivers for the USB->UART bridge on the ESP32 board. This depends on your operating system, and type of board used.
 
-This method of installing is still very new so most releases do not yet have binaries available. You can also find them in the `Actions` tab (at the top) whenever the build process runs, but this is not recommended since these binaries are usually generated from alpha/testing code.
-
 ## First Time Setup
 
 Please ensure you have a working micro SD card inserted which is formatted to FAT32. The Wardriver will not boot without one.
 
 Add the [GSM cell towers database](https://wardriver.uk/gsm_location_3) to the SD card if you want your wardriver to be able to determine its location in areas with no GPS.
 
-When you first boot your Wardriver after flashing, it should create a WiFi network which you can connect to using a smartphone. The network name and password are both ```wardriver.uk``` by default.
+When you first boot your Wardriver after flashing, it should create a WiFi network which you can connect to using a smartphone. The password is ```wardriver.uk``` by default.
 
 Upon connecting, please visit ```http://192.168.4.1/``` in a web browser.
 
 This page should allow you to connect your Wardriver to an existing network. You should also be given an option to create a fallback network for when your configured WiFi network is unavailable.
 
-Connecting your Wardriver to WiFi is recommended as it allows you to conveniently download the data you have collected wirelessly. If you would prefer to collect your data by plugging the SD card into your PC, you can leave the network configuration blank.
+Connecting your Wardriver to WiFi is recommended as it allows you to conveniently download the data you have collected wirelessly, it also allows you to update your Wardriver over the internet as of version v1.2.0. If you would prefer to collect your data by plugging the SD card into your PC, you can leave the network configuration blank.
 
 ## Restarting the Setup
 

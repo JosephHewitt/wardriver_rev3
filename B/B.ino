@@ -370,7 +370,6 @@ void loop() {
       }
     }
   }
-  clear_mac_history();
   BLEScanResults foundDevices = pBLEScan->start(2.5, false);
   await_serial();
   serial_lock = true;

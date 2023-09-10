@@ -422,6 +422,7 @@ String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wa
     
   }
   mbedtls_sha256_finish(&ctx, genhash);
+  reader.close();
   return hex_str(genhash, sizeof genhash);
 }
 
@@ -558,6 +559,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       Update.write(binbuf,counter);
     }
     Update.end(true);
+
+    binreader.close();
   
     clear_display();
     display.println("Update installed");
@@ -733,7 +736,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       }
       
     }
-    
+    binreader.close();
   }
 
   return true;
@@ -1150,7 +1153,7 @@ void boot_config(){
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
-                      File entry =  dir.openNextFile();
+                      File entry = dir.openNextFile();
                       if (!entry) {
                         break;
                       }
@@ -1489,6 +1492,7 @@ void boot_config(){
                       client.flush();
                       delay(2);
                       client.write(reader);
+                      reader.close();
                     }
                   }
     
@@ -2457,6 +2461,7 @@ String get_latest_datetime(String filename, boolean date_only){
             Serial.print("Stripped to: ");
             Serial.println(dt);
           }
+          reader.close();
           return dt;
         } 
       }
@@ -2469,6 +2474,7 @@ String get_latest_datetime(String filename, boolean date_only){
       }
     }
   }
+  reader.close();
   return "";
 }
 
@@ -2615,6 +2621,7 @@ struct coordinates get_cell_pos(String wigle_key){
   }
   Serial.print("read lines: ");
   Serial.println(lines);
+  filereader.close();
   return toreturn;
 }
 
@@ -2827,7 +2834,8 @@ String get_config_option(String key){
       Serial.print(cfgkey);
       Serial.print(" equal to ");
       Serial.println(value);
-    
+
+      filereader.close();
       return value;
     }
     
@@ -2835,6 +2843,7 @@ String get_config_option(String key){
   
   Serial.print("Did not find ");
   Serial.println(key);
+  filereader.close();
   
   return "";
   

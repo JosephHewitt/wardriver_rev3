@@ -1,5 +1,5 @@
 MicroNMEA@2.0.6
-Adafruit GFX Library@1.11.3
+Adafruit GFX Library@1.11.7
 Adafruit SSD1306@2.5.7
 OneWire@2.3.7
-GParser@1.4.0
+GParser@1.5.0

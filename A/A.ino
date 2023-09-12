@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.2.0b3";
+const String VERSION = "1.2.0b4";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -195,6 +195,105 @@ f0PDdGbXj3H6v/r3fk8syofQM1stfmta/HVCBAo=
 )EOF";
 
 // END CERTIFICATES
+
+boolean wigle_upload(String path){
+  if (!SD.exists(path)){
+    Serial.println("Wigle upload filepath not found");
+    return false;
+  }
+
+  if (!SD.exists("/wigle.crt")){
+    Serial.println("No CA cert file!");
+    return false;
+  }
+  
+  //Current root is 1940, double it in case larger certs are used in the future.
+  #define ca_len 3880
+  char ca_root[ca_len];
+  Serial.println("Loading CA");
+  File careader = SD.open("/wigle.crt", FILE_READ);
+  while (careader.available()){
+    byte c = careader.read();
+    ca_root[careader.position()-1] = c;
+    if (careader.position() >= ca_len){
+      careader.close();
+      Serial.println("CA file too large");
+      return false;
+    }
+  }
+  careader.close();
+
+  String boundary = "wduk";
+  boundary.concat(esp_random());
+  Serial.println(boundary);
+  
+  WiFiClientSecure httpsclient;
+  httpsclient.setCACert(ca_root);
+
+  if (!httpsclient.connect("api.wigle.net", 443)){
+    Serial.println("Wigle API connection failed");
+    return false;
+  }
+  Serial.println("WIGLE OK");
+  
+  File filereader = SD.open(path);
+
+  Serial.println("Uploading file to Wigle");
+
+  httpsclient.println("POST /api/v2/file/upload HTTP/1.0");
+  httpsclient.println("Host: api.wigle.net");
+  httpsclient.println("Connection: close");
+  httpsclient.print("User-Agent: wardriver.uk - ");
+  httpsclient.print(device_type_string());
+  httpsclient.print(" / ");
+  httpsclient.println(VERSION);
+  httpsclient.print("Content-Type: multipart/form-data; boundary=");
+  httpsclient.println(boundary);
+  httpsclient.print("Content-Length: ");
+  httpsclient.println(filereader.size());
+  
+  boundary = "--" + boundary;
+  Serial.print("New boundary:");
+  Serial.println(boundary);
+  //End header:
+  httpsclient.println();
+  //Start content-disposition file header:
+  httpsclient.println(boundary);
+  httpsclient.print("Content-Disposition: form-data; name=\"file\"; filename=\"");
+  httpsclient.print(path);
+  httpsclient.println("\"");
+  httpsclient.println("Content-Type: text/csv");
+  //End content-disposition file header:
+  httpsclient.println();
+  //Start file body:
+  httpsclient.write(filereader);
+  //End file body:
+  httpsclient.println();
+  //Start content-disposition form header:
+  httpsclient.println(boundary);
+  httpsclient.println("Content-Disposition: form-data; name=\"donate\"");
+  //End content-disposition form header:
+  httpsclient.println();
+  //Start form body:
+  //Hardcoding "on" for now (uploads can be used for commercial purposes)
+  httpsclient.println("on");
+  //End content-disposition:
+  httpsclient.print(boundary);
+  httpsclient.println("--");
+  //Payload end.
+  httpsclient.flush();
+
+  Serial.println("Uploaded.");
+
+  while (httpsclient.connected()){
+    if (httpsclient.available()){
+      Serial.write(httpsclient.read());
+    }
+  }
+
+  
+  return true;
+}
 
 String ota_get_url(String url, String write_to=""){
   if (ota_optout){
@@ -1055,6 +1154,13 @@ void boot_config(){
         Serial.println("Continuing..");
         String ota_test = ota_get_url("/");
         Serial.println(ota_test);
+
+        //Implement a hash check, only run if there's a mismatch.
+        Serial.println("Getting Wigle cert..");
+        SD.remove("/wigle.crt");
+        ota_get_url("/wigle.crt", "/wigle.crt");
+
+        wigle_upload("/wd3-115.csv");
 
         update_available = check_for_updates(is_stable, false);
       }

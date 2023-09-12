@@ -250,7 +250,7 @@ boolean wigle_upload(String path){
   httpsclient.print("Content-Type: multipart/form-data; boundary=");
   httpsclient.println(boundary);
   httpsclient.print("Content-Length: ");
-  httpsclient.println(filereader.size());
+  httpsclient.println(filereader.size()+512);
   
   boundary = "--" + boundary;
   Serial.print("New boundary:");
@@ -266,8 +266,22 @@ boolean wigle_upload(String path){
   //End content-disposition file header:
   httpsclient.println();
   //Start file body:
-  httpsclient.write(filereader);
+  String fbuf = "";
+  while (filereader.available()){
+    char c = filereader.read();
+    fbuf.concat(c);
+    if (fbuf.length() >= 512){
+      httpsclient.print(fbuf);
+      fbuf = "";
+    }
+  }
+  if (fbuf.length() > 0){
+    httpsclient.print(fbuf);
+    fbuf = "";
+  }
+  //httpsclient.write(filereader);
   //End file body:
+  httpsclient.println();
   httpsclient.println();
   //Start content-disposition form header:
   httpsclient.println(boundary);
@@ -280,6 +294,12 @@ boolean wigle_upload(String path){
   //End content-disposition:
   httpsclient.print(boundary);
   httpsclient.println("--");
+  httpsclient.println();
+  //Maybe a tiny HTTP RFC violation. Send junk because we did +512 to the content-length.
+  //This is because the Content-Disposition headers are of potentially variable length.
+  for (int i = 0; i<512; i++){
+    httpsclient.println();
+  }
   //Payload end.
   httpsclient.flush();
 

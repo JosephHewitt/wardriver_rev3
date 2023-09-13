@@ -197,6 +197,9 @@ f0PDdGbXj3H6v/r3fk8syofQM1stfmta/HVCBAo=
 // END CERTIFICATES
 
 boolean wigle_upload(String path){
+  clear_display();
+  display.println("Wigle Upload");
+  display.display();
   if (!SD.exists(path)){
     Serial.println("Wigle upload filepath not found");
     return false;
@@ -235,6 +238,8 @@ boolean wigle_upload(String path){
     return false;
   }
   Serial.println("WIGLE OK");
+  display.println("Connected");
+  display.display();
   
   File filereader = SD.open(path);
 
@@ -267,12 +272,20 @@ boolean wigle_upload(String path){
   httpsclient.println();
   //Start file body:
   String fbuf = "";
+  float percent = 0;
   while (filereader.available()){
+    percent = ((float)filereader.position() / (float)filereader.size()) * 100;
+    
     char c = filereader.read();
     fbuf.concat(c);
     if (fbuf.length() >= 512){
       httpsclient.print(fbuf);
       fbuf = "";
+      clear_display();
+      display.println("Wigle Upload");
+      display.print(percent);
+      display.println("%");
+      display.display();
     }
   }
   if (fbuf.length() > 0){
@@ -295,21 +308,30 @@ boolean wigle_upload(String path){
   httpsclient.print(boundary);
   httpsclient.println("--");
   httpsclient.println();
-  //Maybe a tiny HTTP RFC violation. Send junk because we did +512 to the content-length.
+  //Maybe a tiny HTTP RFC violation. Send junk because we added extra to the content-length.
   //This is because the Content-Disposition headers are of potentially variable length.
-  for (int i = 0; i<512; i++){
+  for (int i = 0; i<1024; i++){
     httpsclient.println();
+    httpsclient.flush();
+    if (httpsclient.available()){
+      break;
+    }
   }
   //Payload end.
   httpsclient.flush();
 
   Serial.println("Uploaded.");
+  clear_display();
+  display.println("Uploaded");
+  display.display();
 
   while (httpsclient.connected()){
     if (httpsclient.available()){
       Serial.write(httpsclient.read());
     }
   }
+
+  httpsclient.stop();
 
   
   return true;
@@ -1180,8 +1202,6 @@ void boot_config(){
         SD.remove("/wigle.crt");
         ota_get_url("/wigle.crt", "/wigle.crt");
 
-        wigle_upload("/wd3-115.csv");
-
         update_available = check_for_updates(is_stable, false);
       }
       unsigned long disconnectat = millis() + web_timeout;
@@ -1305,10 +1325,12 @@ void boot_config(){
                         client.print("</td>");
                         client.print("<td>");
                         if (filename.endsWith(".bin") || filename.endsWith(".csv")){
-                          client.print("<a href=\"/delete?fn=");
+                          client.print("<p><a href=\"/delete?fn=");
                           client.print(filename);
                           client.print("\">");
-                          client.print("DEL</a>");
+                          client.print("Delete</a></p><p><a href=\"/upload?fn=");
+                          client.print(filename);
+                          client.print("\">Upload</a>");
                         }
                         client.println("</td></tr>");
                       }
@@ -1524,6 +1546,35 @@ void boot_config(){
                     }
                   }
 
+                  if (buff.indexOf("GET /upload?") > -1) {
+                    Serial.println("File upload request");
+                    int startpos = buff.indexOf("?fn=")+4;
+                    int endpos = buff.indexOf(" ",startpos);
+                    String filename = buff.substring(startpos,endpos);
+                    Serial.println(filename);
+                    if (!SD.exists(filename)){
+                      Serial.println("file does not exist");
+                      client.println("Content-type: text/html");
+                      client.println();
+                      client.print("<h1>File not found </h1>");
+                      client.println("<meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    } else {
+                      client.println("Content-type: text/html");
+                      client.println();
+                      client.print("<style>html,td,th{font-size:21px;text-align:center;padding:20px}</style><html>");
+                      client.print("<h1>Uploading");
+                      client.print(filename);
+                      client.print("</h1><h2>Check LCD for progress");
+                      client.print("</h2></html>");
+                      client.flush();
+                      delay(5);
+                      client.stop();
+                      boolean success = wigle_upload(filename);
+                      Serial.print("Success? ");
+                      Serial.println(success);
+                    }
+                  }
+
                   if (buff.indexOf("GET /delete?") > -1) {
                     Serial.println("File delete pre-request");
                     int startpos = buff.indexOf("?fn=")+4;
@@ -1621,11 +1672,14 @@ void boot_config(){
                       reader.close();
                     }
                   }
-    
-                  client.print("\n\r\n\r");
-                  client.flush();
-                  delay(5);
-                  client.stop();
+
+                  
+                  if (client.connected()){
+                    client.print("\n\r\n\r");
+                    client.flush();
+                    delay(5);
+                    client.stop();
+                  }
                   buff = "";
                   disconnectat = millis() + web_timeout;
                 }

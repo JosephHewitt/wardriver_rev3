@@ -118,6 +118,8 @@ TaskHandle_t primary_scan_loop_handle;
 
 boolean b_working = false; //Set to true when we receive some valid data from side B.
 boolean ota_optout = false; //Set in the web interface
+boolean wigle_commercial = false; //Set in the web interface
+String wigle_api_key = ""; //Set in the web interface
 
 #define DEVICE_UNKNOWN   254
 #define DEVICE_CUSTOM    0
@@ -252,6 +254,10 @@ boolean wigle_upload(String path){
   httpsclient.print(device_type_string());
   httpsclient.print(" / ");
   httpsclient.println(VERSION);
+  if (wigle_api_key.length() > 2){
+    httpsclient.print("Authorization: Basic ");
+    httpsclient.println(wigle_api_key);
+  }
   httpsclient.print("Content-Type: multipart/form-data; boundary=");
   httpsclient.println(boundary);
   httpsclient.print("Content-Length: ");
@@ -936,6 +942,8 @@ void boot_config(){
 
   preferences.begin("wardriver", false);
   ota_optout = preferences.getBool("ota_optout", false);
+  wigle_commercial = preferences.getBool("wigle_commercial", false);
+  wigle_api_key = preferences.getString("wigle_api_key", "");
   bool firstrun = preferences.getBool("first", true);
   if (block_reconfigure){
     firstrun = false;
@@ -1374,6 +1382,41 @@ void boot_config(){
                     delay(5);
                     client.stop();
                     check_for_updates(is_stable, true);
+                  }
+
+                  if (buff.indexOf("GET /wigle-setup") > -1){
+                    Serial.println("Sending wigle-setup page");
+                    client.println("Content-type: text/html");
+                    client.println();
+                    client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
+                    client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h2>WiGLE Configuration</h2>");
+                    client.print("<p>Your device can upload captured data directly to WiGLE. Please provide a WiGLE API key below. This can be found at https://wigle.net/account</p>");
+                    client.print("<form method=\"get\" action=\"/wcfg\">API Key ('encoded for use'):<input type=\"text\" name=\"akey\" id=\"akey\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"commercial\"><input type=\"checkbox\" id=\"commercial\" name=\"commercial\" value=\"commercial\"> Allow WiGLE to use this data commercially</label></p></form>");
+                    client.println("<br><hr>Additional help is available at https://wardriver.uk</html>");
+
+                  }
+
+                  if (buff.indexOf("GET /wcfg?") > -1){
+                    Serial.println("Got WiGLE config");
+                    client.println("Content-type: text/html");
+                    client.println();
+                    
+                    if (buff.indexOf("&commercial=commercial") > -1){
+                      wigle_commercial = true;
+                      //Really, lets use POST requests for this soon.
+                      buff.replace("&commercial=commercial","");
+                      preferences.putBool("wigle_commercial", true);
+                      Serial.println("WiGLE commercial optin selected");
+                    }
+                    int startpos = buff.indexOf("?akey=")+6;
+                    int endpos = buff.indexOf("&");
+                    wigle_api_key = GP_urldecode(buff.substring(startpos,endpos));
+                    
+                    Serial.println(wigle_api_key);
+                    preferences.putString("wigle_api_key", wigle_api_key);
+    
+                    client.print("<h1>Thanks!</h1>Please wait. <meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+                    
                   }
 
                   if (buff.indexOf("GET /ota_change_pref") > -1){

@@ -230,7 +230,6 @@ boolean wigle_upload(String path){
 
   String boundary = "wduk";
   boundary.concat(esp_random());
-  Serial.println(boundary);
   
   WiFiClientSecure httpsclient;
   httpsclient.setCACert(ca_root);
@@ -264,8 +263,6 @@ boolean wigle_upload(String path){
   httpsclient.println(filereader.size()+512);
   
   boundary = "--" + boundary;
-  Serial.print("New boundary:");
-  Serial.println(boundary);
   //End header:
   httpsclient.println();
   //Start content-disposition file header:
@@ -308,8 +305,9 @@ boolean wigle_upload(String path){
   //End content-disposition form header:
   httpsclient.println();
   //Start form body:
-  //Hardcoding "on" for now (uploads can be used for commercial purposes)
-  httpsclient.println("on");
+  if (wigle_commercial){
+    httpsclient.println("on");
+  }
   //End content-disposition:
   httpsclient.print(boundary);
   httpsclient.println("--");
@@ -1391,7 +1389,14 @@ void boot_config(){
                     client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                     client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h2>WiGLE Configuration</h2>");
                     client.print("<p>Your device can upload captured data directly to WiGLE. Please provide a WiGLE API key below. This can be found at https://wigle.net/account</p>");
-                    client.print("<form method=\"get\" action=\"/wcfg\">API Key ('encoded for use'):<input type=\"text\" name=\"akey\" id=\"akey\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"commercial\"><input type=\"checkbox\" id=\"commercial\" name=\"commercial\" value=\"commercial\"> Allow WiGLE to use this data commercially</label></p></form>");
+                    client.print("<form method=\"get\" action=\"/wcfg\">API Key ('encoded for use'):<input type=\"text\" name=\"akey\" id=\"akey\" value=\"");
+                    if (wigle_api_key.length() > 2){
+                      client.print("configured");
+                    }
+                    client.print("\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"commercial\"><input type=\"checkbox\" id=\"commercial\" name=\"commercial\" value=\"commercial\"> Allow WiGLE to use this data commercially</label></p></form>");
+                    if (wigle_api_key.length() > 2){
+                      client.print("<p>An API key is already set. Leave the value as 'configured' above unless you wish to change it.");
+                    }
                     client.println("<br><hr>Additional help is available at https://wardriver.uk</html>");
 
                   }
@@ -1409,10 +1414,13 @@ void boot_config(){
                       Serial.println("WiGLE commercial optin selected");
                     }
                     int startpos = buff.indexOf("?akey=")+6;
-                    int endpos = buff.indexOf("&");
-                    wigle_api_key = GP_urldecode(buff.substring(startpos,endpos));
+                    int endpos = buff.indexOf(" HTTP");
+                    String set_api_key = GP_urldecode(buff.substring(startpos,endpos));
                     
-                    Serial.println(wigle_api_key);
+                    if (set_api_key != "configured"){
+                      wigle_api_key = set_api_key;
+                    }
+                    
                     preferences.putString("wigle_api_key", wigle_api_key);
     
                     client.print("<h1>Thanks!</h1>Please wait. <meta http-equiv=\"refresh\" content=\"1; URL=/\" />");

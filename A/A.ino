@@ -1470,7 +1470,7 @@ void boot_config(){
                       client.println("<p>OTA updates are turned off: <a href=\"/ota_change_pref\">Opt-in</a></p>");
                     }
                     
-                    client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Opt</th></tr>");
+                    client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Upload Status</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
@@ -1520,6 +1520,16 @@ void boot_config(){
                         client.print(get_latest_datetime(filename, false));
                         client.print("</td>");
                         client.print("<td>");
+                        if (wigle_file_reference.fid == 0){
+                          client.print("Not uploaded");
+                        } else {
+                          client.print("Uploaded. ");
+                          client.print(wigle_file_reference.total_gps);
+                          client.print(" total WiFi (");
+                          client.print(wigle_file_reference.discovered_gps);
+                          client.print(" new)");
+                        }
+                        client.print("</td><td>");
                         if (filename.endsWith(".bin") || filename.endsWith(".csv")){
                           client.print("<p><a href=\"/delete?fn=");
                           client.print(filename);

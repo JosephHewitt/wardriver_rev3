@@ -220,14 +220,6 @@ struct wigle_file get_wigle_file(int fid, unsigned long fsize){
   //Returns a reference to a WiGLE uploaded file, if it has been uploaded. A zero'd object otherwise.
 
   for (unsigned int cur = 0; cur < wigle_history_len; cur++){
-    Serial.print("CMP: fid:");
-    Serial.print(fid);
-    Serial.print("/");
-    Serial.print(wigle_history[cur].fid);
-    Serial.print(", fsize:");
-    Serial.print(fsize);
-    Serial.print("/");
-    Serial.println(wigle_history[cur].fsize);
     if (wigle_history[cur].fid == 0){
       //We hit an unpopulated entry, meaning we're at the end.
       break;
@@ -309,24 +301,17 @@ void wigle_load_history(){
   while (httpsclient.connected()){
     if (headers){
       lbuf = httpsclient.readStringUntil('\n');
-      Serial.print("H:");
-      Serial.println(lbuf);
       if (lbuf.length() < 3){
         //Blank line, end of headers.
         headers = false;
-        Serial.println("^^^^END");
-        Serial.println();
       }
     } else {
       int first_pos = 0;
       int second_pos = 0;
       
       lbuf = httpsclient.readStringUntil('}');
-      Serial.print("B:");
-      Serial.println(lbuf);
 
       if (lbuf.indexOf("username") > 0){
-        //"username":"JosephHewitt"
         first_pos = lbuf.indexOf("username\":\"")+11;
         second_pos = lbuf.indexOf("\"", first_pos);
         String username = lbuf.substring(first_pos, second_pos);
@@ -339,7 +324,6 @@ void wigle_load_history(){
       String chip_id_str = String(chip_id);
       if (lbuf.indexOf(chip_id_str) < 0){
         //No reference to our device, so it was uploaded by something else.
-        Serial.println("^^^^IGNORING");
         continue;
       }
 
@@ -364,20 +348,6 @@ void wigle_load_history(){
         is_waiting = false;
       }
 
-      Serial.print("FilenameID=");
-      Serial.println(filename_id);
-      Serial.print("DiscoveredGPS=");
-      Serial.println(discovered_gps);
-      Serial.print("TotalGPS=");
-      Serial.println(total_gps);
-      Serial.print("FileSize=");
-      Serial.println(file_size);
-      Serial.print("Is waiting? ");
-      Serial.println(is_waiting);
-
-      
-      
-
       struct wigle_file wigle_file_reference;
       wigle_file_reference = (wigle_file){.fid = (int) filename_id.toInt(), .fsize = (int) file_size.toInt(), .discovered_gps = (int) discovered_gps.toInt(), .total_gps = (int) total_gps.toInt(), .wait = is_waiting};
       wigle_history[wigle_history_cursor] = wigle_file_reference;
@@ -385,7 +355,8 @@ void wigle_load_history(){
       
     }
   }
-
+  Serial.print(wigle_history_cursor);
+  Serial.println(" historical uploads found");
   Serial.println("Connection closed");
 }
 
@@ -437,6 +408,25 @@ boolean wigle_upload(String path){
 
   Serial.println("Uploading file to Wigle");
 
+  String nice_filename = generate_filename(path);
+
+  //This is horrible :^)
+  //Content-Disposition headers appear in the HTTP body, this is the calculated size.
+  int cd_header_len = 0;
+  cd_header_len += (boundary.length()+2)*3; //We use the boundary 3 times, double-dashed (the +2)
+  cd_header_len += 2; //The additional double-dash for the final boundary.
+  cd_header_len += 56; //Initial content-disposition filename line, including closing quote
+  cd_header_len += nice_filename.length();
+  cd_header_len += 22; //Content-Type CSV
+  cd_header_len += 45; //Second content-disposition line for "donate" form.
+  if (wigle_commercial){
+    cd_header_len += 4; //"on" + \n\r
+  }
+  cd_header_len += 22; //New lines (doubled, because it's CR+NL)
+  Serial.print("Extra content-length bytes for CD headers: ");
+  Serial.println(cd_header_len);
+  
+
   httpsclient.println("POST /api/v2/file/upload HTTP/1.0");
   httpsclient.println("Host: api.wigle.net");
   httpsclient.println("Connection: close");
@@ -451,7 +441,7 @@ boolean wigle_upload(String path){
   httpsclient.print("Content-Type: multipart/form-data; boundary=");
   httpsclient.println(boundary);
   httpsclient.print("Content-Length: ");
-  httpsclient.println(filereader.size()+512);
+  httpsclient.println(filereader.size()+cd_header_len);
   
   boundary = "--" + boundary;
   //End header:
@@ -459,7 +449,7 @@ boolean wigle_upload(String path){
   //Start content-disposition file header:
   httpsclient.println(boundary);
   httpsclient.print("Content-Disposition: form-data; name=\"file\"; filename=\"");
-  httpsclient.print(generate_filename(path));
+  httpsclient.print(nice_filename);
   httpsclient.println("\"");
   httpsclient.println("Content-Type: text/csv");
   //End content-disposition file header:
@@ -503,16 +493,6 @@ boolean wigle_upload(String path){
   httpsclient.print(boundary);
   httpsclient.println("--");
   httpsclient.println();
-  //Maybe a tiny HTTP RFC violation. Send junk because we added extra to the content-length.
-  //This is because the Content-Disposition headers are of potentially variable length.
-  for (int i = 0; i<1024; i++){
-    httpsclient.println();
-    httpsclient.flush();
-    if (httpsclient.available()){
-      break;
-    }
-  }
-  //Payload end.
   httpsclient.flush();
 
   Serial.println("Uploaded.");
@@ -1507,7 +1487,7 @@ void boot_config(){
 
                     client.println("</p>");
                     
-                    client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Upload Status</th><th>Opt</th></tr>");
+                    client.println("<table><tr><th>File</th><th>Size</th><th>Status</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
@@ -1551,12 +1531,15 @@ void boot_config(){
                         client.print(filename);
                         client.print("\">");
                         client.print(filename);
-                        client.print("</a></td><td>");
+                        String file_dt = get_latest_datetime(filename, false);
+                        client.print("</a>");
+                        if (file_dt.length() > 2){
+                          client.print(" from ");
+                          client.print(file_dt);
+                        }
+                        client.print("</td><td>");
                         client.print(entry.size()/1024);
                         client.print(" kb</td><td>");
-                        client.print(get_latest_datetime(filename, false));
-                        client.print("</td>");
-                        client.print("<td>");
                         if (wigle_file_reference.fid == 0){
                           client.print("Not uploaded");
                         } else {
@@ -1636,7 +1619,7 @@ void boot_config(){
                     }
                     client.print("\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"commercial\"><input type=\"checkbox\" id=\"commercial\" name=\"commercial\" value=\"commercial\"> Allow WiGLE to use this data commercially</label></p></form>");
                     if (wigle_api_key.length() > 2){
-                      client.print("<p>An API key is already set. Leave the value as 'configured' above unless you wish to change it.");
+                      client.print("<p>An API key is already set. Leave the value as 'configured' above unless you wish to change it.</p>");
                     }
                     client.println("<br><hr>Additional help is available at https://wardriver.uk</html>");
 

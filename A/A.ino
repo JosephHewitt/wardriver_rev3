@@ -237,6 +237,8 @@ struct wigle_file get_wigle_file(int fid, unsigned long fsize){
 }
 
 void wigle_load_history(){
+  wigle_history_cursor = 0;
+  
   //If authorized, get file uploads from WiGLE and store their references in RAM for later.
   Serial.println("Will check previous WiGLE uploads");
   
@@ -422,7 +424,7 @@ boolean wigle_upload(String path){
   if (wigle_commercial){
     cd_header_len += 4; //"on" + \n\r
   }
-  cd_header_len += 22; //New lines (doubled, because it's CR+NL)
+  cd_header_len += 22; //New lines (doubled, because it's CR&LF)
   Serial.print("Extra content-length bytes for CD headers: ");
   Serial.println(cd_header_len);
   
@@ -507,6 +509,9 @@ boolean wigle_upload(String path){
   }
 
   httpsclient.stop();
+
+  Serial.println();
+  Serial.println("WiGLE done");
 
   
   return true;
@@ -1648,6 +1653,8 @@ void boot_config(){
                     preferences.putString("wigle_api_key", wigle_api_key);
     
                     client.print("<h1>Thanks!</h1>Please wait. <meta http-equiv=\"refresh\" content=\"1; URL=/\" />");
+
+                    wigle_load_history();
                     
                   }
 
@@ -1847,6 +1854,9 @@ void boot_config(){
                       boolean success = wigle_upload(filename);
                       Serial.print("Success? ");
                       Serial.println(success);
+                      if (success == true){
+                        wigle_load_history();
+                      }
                     }
                   }
 

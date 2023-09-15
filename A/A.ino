@@ -286,14 +286,11 @@ void wigle_load_history(){
   display.println("Connected");
   display.display();
 
-  //Lets generate the User-Agent in a better way, we're doing this in a few places.
   httpsclient.println("GET /api/v2/file/transactions?pagestart=0&pageend=200 HTTP/1.0");
   httpsclient.println("Host: api.wigle.net");
   httpsclient.println("Connection: close");
-  httpsclient.print("User-Agent: wardriver.uk - ");
-  httpsclient.print(device_type_string());
-  httpsclient.print(" / ");
-  httpsclient.println(VERSION);
+  httpsclient.print("User-Agent: ");
+  httpsclient.println(generate_user_agent());
   httpsclient.print("Authorization: Basic ");
   httpsclient.println(wigle_api_key);
   httpsclient.println();
@@ -350,10 +347,12 @@ void wigle_load_history(){
         is_waiting = false;
       }
 
-      struct wigle_file wigle_file_reference;
-      wigle_file_reference = (wigle_file){.fid = (int) filename_id.toInt(), .fsize = (int) file_size.toInt(), .discovered_gps = (int) discovered_gps.toInt(), .total_gps = (int) total_gps.toInt(), .wait = is_waiting};
-      wigle_history[wigle_history_cursor] = wigle_file_reference;
-      wigle_history_cursor++;
+      if (wigle_history_cursor < wigle_history_len){
+        struct wigle_file wigle_file_reference;
+        wigle_file_reference = (wigle_file){.fid = (int) filename_id.toInt(), .fsize = (int) file_size.toInt(), .discovered_gps = (int) discovered_gps.toInt(), .total_gps = (int) total_gps.toInt(), .wait = is_waiting};
+        wigle_history[wigle_history_cursor] = wigle_file_reference;
+        wigle_history_cursor++;
+      }
       
     }
   }
@@ -432,10 +431,8 @@ boolean wigle_upload(String path){
   httpsclient.println("POST /api/v2/file/upload HTTP/1.0");
   httpsclient.println("Host: api.wigle.net");
   httpsclient.println("Connection: close");
-  httpsclient.print("User-Agent: wardriver.uk - ");
-  httpsclient.print(device_type_string());
-  httpsclient.print(" / ");
-  httpsclient.println(VERSION);
+  httpsclient.print("User-Agent: ");
+  httpsclient.println(generate_user_agent());
   if (wigle_api_key.length() > 2){
     httpsclient.print("Authorization: Basic ");
     httpsclient.println(wigle_api_key);
@@ -552,9 +549,7 @@ String ota_get_url(String url, String write_to=""){
     httpsclient.println("Host: ota.wardriver.uk");
     httpsclient.println("Connection: close");
     httpsclient.print("User-Agent: ");
-    httpsclient.print(device_type_string());
-    httpsclient.print(" / ");
-    httpsclient.println(VERSION);
+    httpsclient.println(generate_user_agent());
     httpsclient.println();
   }
   String return_out = "";
@@ -3320,4 +3315,12 @@ String generate_filename(String filepath){
   fname.concat(filepath);
   fname.replace("/","_");
   return fname;
+}
+
+String generate_user_agent(){
+  String ret = "wardriver.uk - ";
+  ret.concat(device_type_string());
+  ret.concat(" / ");
+  ret.concat(VERSION);
+  return ret;
 }

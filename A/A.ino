@@ -109,6 +109,7 @@ struct wigle_file {
   unsigned long fsize;
   unsigned long discovered_gps;
   unsigned long total_gps;
+  boolean wait;
 };
 
 struct mac_addr mac_history[mac_history_len];
@@ -135,6 +136,7 @@ boolean b_working = false; //Set to true when we receive some valid data from si
 boolean ota_optout = false; //Set in the web interface
 boolean wigle_commercial = false; //Set in the web interface
 String wigle_api_key = ""; //Set in the web interface
+String wigle_username = ""; //Set automatically via API calls
 
 #define DEVICE_UNKNOWN   254
 #define DEVICE_CUSTOM    0
@@ -238,7 +240,7 @@ struct wigle_file get_wigle_file(int fid, unsigned long fsize){
   //Return the struct with all zeros when we don't have anything.
   //a fid of zero can't be seen in the wild, so this denotes an invalid/missing response.
   struct wigle_file wigle_file_reference;
-  wigle_file_reference = (wigle_file){.fid = 0, .fsize = 0, .discovered_gps = 0, .total_gps = 0};
+  wigle_file_reference = (wigle_file){.fid = 0, .fsize = 0, .discovered_gps = 0, .total_gps = 0, .wait = true};
   return wigle_file_reference;
 }
 
@@ -251,7 +253,7 @@ void wigle_load_history(){
     return;
   }
 
-  if (!wigle_api_key){
+  if (wigle_api_key.length() < 3){
     Serial.println("Not authorized with WiGLE");
     return;
   }
@@ -316,18 +318,30 @@ void wigle_load_history(){
         Serial.println();
       }
     } else {
+      int first_pos = 0;
+      int second_pos = 0;
+      
       lbuf = httpsclient.readStringUntil('}');
       Serial.print("B:");
       Serial.println(lbuf);
+
+      if (lbuf.indexOf("username") > 0){
+        //"username":"JosephHewitt"
+        first_pos = lbuf.indexOf("username\":\"")+11;
+        second_pos = lbuf.indexOf("\"", first_pos);
+        String username = lbuf.substring(first_pos, second_pos);
+        if (username.length() > 2 && username.length() < 33){
+          wigle_username = username;
+          username = "";
+        }
+      }
+      
       String chip_id_str = String(chip_id);
       if (lbuf.indexOf(chip_id_str) < 0){
         //No reference to our device, so it was uploaded by something else.
         Serial.println("^^^^IGNORING");
         continue;
       }
-
-      int first_pos = 0;
-      int second_pos = 0;
 
       first_pos = lbuf.indexOf("wd3-")+4;
       second_pos = lbuf.indexOf(".", first_pos);
@@ -345,6 +359,11 @@ void wigle_load_history(){
       second_pos = lbuf.indexOf(",", first_pos);
       String file_size = lbuf.substring(first_pos, second_pos);
 
+      boolean is_waiting = true;
+      if (lbuf.indexOf("wait\":null") > 0){
+        is_waiting = false;
+      }
+
       Serial.print("FilenameID=");
       Serial.println(filename_id);
       Serial.print("DiscoveredGPS=");
@@ -353,9 +372,14 @@ void wigle_load_history(){
       Serial.println(total_gps);
       Serial.print("FileSize=");
       Serial.println(file_size);
+      Serial.print("Is waiting? ");
+      Serial.println(is_waiting);
+
+      
+      
 
       struct wigle_file wigle_file_reference;
-      wigle_file_reference = (wigle_file){.fid = (int) filename_id.toInt(), .fsize = (int) file_size.toInt(), .discovered_gps = (int) discovered_gps.toInt(), .total_gps = (int) total_gps.toInt()};
+      wigle_file_reference = (wigle_file){.fid = (int) filename_id.toInt(), .fsize = (int) file_size.toInt(), .discovered_gps = (int) discovered_gps.toInt(), .total_gps = (int) total_gps.toInt(), .wait = is_waiting};
       wigle_history[wigle_history_cursor] = wigle_file_reference;
       wigle_history_cursor++;
       
@@ -1469,6 +1493,19 @@ void boot_config(){
                     if (ota_optout){
                       client.println("<p>OTA updates are turned off: <a href=\"/ota_change_pref\">Opt-in</a></p>");
                     }
+
+                    client.print("<p><a href=\"/wigle-setup\">WiGLE Settings</a>");
+                    if (wigle_username.length() > 1){
+                      client.print(" (logged in as ");
+                      client.print(html_escape(wigle_username));
+                      client.print(")");
+                    } else if (wigle_api_key.length() > 2){
+                      client.print(" (login failed)");
+                    } else {
+                      client.print(" (not configured)");
+                    }
+
+                    client.println("</p>");
                     
                     client.println("<table><tr><th>Filename</th><th>File Size</th><th>Finish Date</th><th>Upload Status</th><th>Opt</th></tr>");
                     Serial.println("Scanning for files");
@@ -1524,10 +1561,14 @@ void boot_config(){
                           client.print("Not uploaded");
                         } else {
                           client.print("Uploaded. ");
-                          client.print(wigle_file_reference.total_gps);
-                          client.print(" total WiFi (");
-                          client.print(wigle_file_reference.discovered_gps);
-                          client.print(" new)");
+                          if (wigle_file_reference.wait != true){
+                            client.print(wigle_file_reference.total_gps);
+                            client.print(" total WiFi (");
+                            client.print(wigle_file_reference.discovered_gps);
+                            client.print(" new)");
+                          } else {
+                            client.print("Not yet processed");
+                          }
                         }
                         client.print("</td><td>");
                         if (filename.endsWith(".bin") || filename.endsWith(".csv")){

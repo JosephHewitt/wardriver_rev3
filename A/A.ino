@@ -156,6 +156,7 @@ boolean block_reconfigure = false;
 int web_timeout = 60000; //ms to spend hosting the web interface before booting.
 int gps_allow_stale_time = 60000;
 boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
+boolean nets_over_uart = false; //Send discovered networks over UART?
 
 
 boolean use_fallback_cert = false;
@@ -1103,6 +1104,7 @@ void boot_config(){
   web_timeout = get_config_int("web_timeout", web_timeout);
   gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
+  nets_over_uart = get_config_bool("nets_over_uart", nets_over_uart);
 
   boolean sb_bw16 = get_config_bool("sb_bw16", false);
   if (sb_bw16){
@@ -2092,11 +2094,18 @@ void setup() {
     while (!filewriter){
       filewriter = SD.open("/test.txt", FILE_APPEND);
       if (!filewriter){
-        Serial.println("Failed to open file for writing.");
+        Serial.println("Failed to open file for writing. Type continue to skip this check.");
         clear_display();
         display.println("SD File open failed!");
         display.display();
-        delay(1000);
+        String sbuff = Serial.readStringUntil('\n');
+        if (sbuff.indexOf("continue") >= 0){
+          //Since this boot is tethered to a PC and has no local storage, override some stuff.
+          nets_over_uart = true;
+          block_reconfigure = true;
+          web_timeout = 250;
+          break;
+        }
       }
     }
     int wrote = filewriter.print("\n_BOOT_");
@@ -2110,11 +2119,18 @@ void setup() {
     filewriter.flush();
     if (wrote < 1){
       while(true){
-        Serial.println("Failed to write to SD card!");
+        Serial.println("Failed to write to SD card! Type continue to resume boot process.");
         clear_display();
         display.println("SD Card write failed!");
         display.display();
-        delay(4000);
+        String sbuff = Serial.readStringUntil('\n');
+        if (sbuff.indexOf("continue") >= 0){
+          //Since this boot is tethered to a PC and has no local storage, override some stuff.
+          nets_over_uart = true;
+          block_reconfigure = true;
+          web_timeout = 250;
+          break;
+        }
       }
     }
 
@@ -2235,6 +2251,9 @@ void primary_scan_loop(void * parameter){
           }
           
           filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+          if (nets_over_uart){
+            Serial.printf("NET=%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+          }
          
         }
       }
@@ -2330,14 +2349,17 @@ void loop(){
         }
       }
     }
-    Serial.println(bside_buffer);
     String towrite = "";
     towrite = parse_bside_line(bside_buffer);
     if (towrite.length() > 1){
-      Serial.println(towrite);
       filewriter.print(towrite);
       filewriter.print("\n");
       filewriter.flush();
+      if (nets_over_uart){
+        Serial.print("NET=");
+        Serial.print(towrite);
+        Serial.print("\n");
+      }
     }
     
   }
@@ -2617,8 +2639,6 @@ String parse_bside_line(String buff){
       if (!seen_mac(mac_bytes)){
         save_mac(mac_bytes);
         //Save to SD?
-        Serial.print("NEW WIFI (SIDE B): ");
-        Serial.println(buff);
 
         String authtype = security_int_to_string((int) security_raw.toInt());
         
@@ -2753,9 +2773,6 @@ String dt_string(){
   ts = *localtime(&now);
   strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ts);
   String out = String(buf);
-  
-  Serial.print("New dt_str: ");
-  Serial.println(out);
   
   return out;
 }
@@ -2944,9 +2961,6 @@ void update_epoch(){
     }
     epoch += tdiff_sec;
     epoch_updated_at = millis();
-    Serial.print("Added ");
-    Serial.print(tdiff_sec);
-    Serial.println(" seconds to epoch");
     return;
   }
   

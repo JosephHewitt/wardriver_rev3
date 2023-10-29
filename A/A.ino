@@ -157,6 +157,7 @@ int web_timeout = 60000; //ms to spend hosting the web interface before booting.
 int gps_allow_stale_time = 60000;
 boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
 boolean nets_over_uart = false; //Send discovered networks over UART?
+String ota_hostname = "ota.wardriver.uk";
 
 
 boolean use_fallback_cert = false;
@@ -534,7 +535,7 @@ String ota_get_url(String url, String write_to=""){
     Serial.println("primary cert");
     httpsclient.setCACert(PRIMARY_OTA_CERT);
   }
-  if (!httpsclient.connect("ota.wardriver.uk", 443)){
+  if (!httpsclient.connect(ota_hostname.c_str(), 443)){
     Serial.println("failed");
     if (!use_fallback_cert){
       Serial.println("Will retry using fallback cert");
@@ -547,7 +548,8 @@ String ota_get_url(String url, String write_to=""){
     httpsclient.print("GET ");
     httpsclient.print(url);
     httpsclient.println(" HTTP/1.0");
-    httpsclient.println("Host: ota.wardriver.uk");
+    httpsclient.print("Host: ");
+    httpsclient.println(ota_hostname);
     httpsclient.println("Connection: close");
     httpsclient.print("User-Agent: ");
     httpsclient.println(generate_user_agent());
@@ -626,6 +628,7 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
   int linecount = 0;
   int partcount = 0;
   boolean update_available = false;
+  String server_b_hash = "";
   while (cur <= res.length()){
     char c = res.charAt(cur);
     if (c == '>' || c == '\n'){
@@ -650,6 +653,9 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
           ota_latest_beta = partbuf;
         }
       }
+      if (partcount == 4){
+        server_b_hash = partbuf;
+      }
 
       if (stable == reading_stable){
         //This is the branch we are interested in
@@ -667,7 +673,11 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
           }
           if (partcount == 6){
             if (download_now){
-              ota_get_url(partbuf, "/B.bin");
+              if (server_b_hash != preferences.getString("b_checksum","x")){
+                ota_get_url(partbuf, "/B.bin");
+              } else {
+                Serial.println("Not downloading B, already installed (hash check)");
+              }
             }
           }
         }
@@ -1105,6 +1115,7 @@ void boot_config(){
   gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
   nets_over_uart = get_config_bool("nets_over_uart", nets_over_uart);
+  ota_hostname = get_config_string("ota_hostname", ota_hostname);
 
   boolean sb_bw16 = get_config_bool("sb_bw16", false);
   if (sb_bw16){
@@ -1697,14 +1708,21 @@ void boot_config(){
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
-                      String check_result = online_hash_check(filehash);
-                      String color = "red";
-                      String emoji = "&#9888;"; //warning
-                      if (check_result != ""){
-                        color = "green";
-                        emoji = "&#128274;"; //lock
+                      String installed_hash = preferences.getString("b_checksum");
+                      if (filehash != installed_hash){
+                        String check_result = online_hash_check(filehash);
+                        String color = "red";
+                        String emoji = "&#9888;"; //warning
+                        if (check_result != ""){
+                          color = "green";
+                          emoji = "&#128274;"; //lock
+                        }
+                        client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                      } else {
+                        Serial.print("B hash matches installed hash, deleting ");
+                        Serial.println(filehash);
+                        SD.remove("/B.bin");
                       }
-                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr></body>");
                     
@@ -1738,6 +1756,11 @@ void boot_config(){
                         display.println("Update failed");
                         display.display();
                         delay(5000);
+                      } else {
+                        //Install worked.
+                        if (fw_filename == "/B.bin"){
+                          preferences.putString("b_checksum", expect_hash);
+                        }
                       }
                     } else {
                       client.print("<h1>Error verifying update</h1>");

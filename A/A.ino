@@ -633,15 +633,6 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
     char c = res.charAt(cur);
     if (c == '>' || c == '\n'){
       //Handle partbuf.
-      /*
-      PBUF0/0:PR
-      PBUF0/1:1.2.0b4
-      PBUF0/2:Sep-18-2023
-      PBUF0/3:b2c24400af629afd1b5f0c0bcbddf3c329bf81bc2cd0e3f72543cc5401e39e80 <- A hash
-      PBUF0/4:e2e05f8fa402b120b31c001271f049456fa30c980caf9ee1d9c32ae63b8d2e2f <- B hash
-      PBUF0/5:/v1-2-0b4/A/build/esp32.esp32.esp32/A.ino.bin
-      PBUF0/6:/v1-2-0b4/B/build/esp32.esp32.esp32/B.ino.bin
-      */
       Serial.print("PBUF");
       Serial.print(linecount);
       Serial.print("/");

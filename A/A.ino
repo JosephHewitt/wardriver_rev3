@@ -535,7 +535,7 @@ String ota_get_url(String url, String write_to=""){
     Serial.println("primary cert");
     httpsclient.setCACert(PRIMARY_OTA_CERT);
   }
-  if (!httpsclient.connect(ota_hostname, 443)){
+  if (!httpsclient.connect(ota_hostname.c_str(), 443)){
     Serial.println("failed");
     if (!use_fallback_cert){
       Serial.println("Will retry using fallback cert");

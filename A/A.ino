@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.2.0b4";
+const String VERSION = "1.2.0b5";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -626,10 +626,20 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
   int linecount = 0;
   int partcount = 0;
   boolean update_available = false;
+  String server_b_hash = "";
   while (cur <= res.length()){
     char c = res.charAt(cur);
     if (c == '>' || c == '\n'){
       //Handle partbuf.
+      /*
+      PBUF0/0:PR
+      PBUF0/1:1.2.0b4
+      PBUF0/2:Sep-18-2023
+      PBUF0/3:b2c24400af629afd1b5f0c0bcbddf3c329bf81bc2cd0e3f72543cc5401e39e80 <- A hash
+      PBUF0/4:e2e05f8fa402b120b31c001271f049456fa30c980caf9ee1d9c32ae63b8d2e2f <- B hash
+      PBUF0/5:/v1-2-0b4/A/build/esp32.esp32.esp32/A.ino.bin
+      PBUF0/6:/v1-2-0b4/B/build/esp32.esp32.esp32/B.ino.bin
+      */
       Serial.print("PBUF");
       Serial.print(linecount);
       Serial.print("/");
@@ -650,6 +660,9 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
           ota_latest_beta = partbuf;
         }
       }
+      if (partcount == 4){
+        server_b_hash = partbuf;
+      }
 
       if (stable == reading_stable){
         //This is the branch we are interested in
@@ -667,7 +680,11 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
           }
           if (partcount == 6){
             if (download_now){
-              ota_get_url(partbuf, "/B.bin");
+              if (server_b_hash != preferences.getString("b_checksum","x")){
+                ota_get_url(partbuf, "/B.bin");
+              } else {
+                Serial.println("Not downloading B, already installed (hash check)");
+              }
             }
           }
         }
@@ -1697,14 +1714,21 @@ void boot_config(){
                     }
                     if (SD.exists("/B.bin")){
                       String filehash = file_hash("/B.bin");
-                      String check_result = online_hash_check(filehash);
-                      String color = "red";
-                      String emoji = "&#9888;"; //warning
-                      if (check_result != ""){
-                        color = "green";
-                        emoji = "&#128274;"; //lock
+                      String installed_hash = preferences.getString("b_checksum");
+                      if (filehash != installed_hash){
+                        String check_result = online_hash_check(filehash);
+                        String color = "red";
+                        String emoji = "&#9888;"; //warning
+                        if (check_result != ""){
+                          color = "green";
+                          emoji = "&#128274;"; //lock
+                        }
+                        client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
+                      } else {
+                        Serial.print("B hash matches installed hash, deleting ");
+                        Serial.println(filehash);
+                        SD.remove("/B.bin");
                       }
-                      client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                     }
                     client.println("</tr></body>");
                     
@@ -1738,6 +1762,11 @@ void boot_config(){
                         display.println("Update failed");
                         display.display();
                         delay(5000);
+                      } else {
+                        //Install worked.
+                        if (fw_filename == "/B.bin"){
+                          preferences.putString("b_checksum", expect_hash);
+                        }
                       }
                     } else {
                       client.print("<h1>Error verifying update</h1>");

@@ -157,6 +157,7 @@ int web_timeout = 60000; //ms to spend hosting the web interface before booting.
 int gps_allow_stale_time = 60000;
 boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
 boolean nets_over_uart = false; //Send discovered networks over UART?
+String ota_hostname = "ota.wardriver.uk";
 
 
 boolean use_fallback_cert = false;
@@ -534,7 +535,7 @@ String ota_get_url(String url, String write_to=""){
     Serial.println("primary cert");
     httpsclient.setCACert(PRIMARY_OTA_CERT);
   }
-  if (!httpsclient.connect("ota.wardriver.uk", 443)){
+  if (!httpsclient.connect(ota_hostname, 443)){
     Serial.println("failed");
     if (!use_fallback_cert){
       Serial.println("Will retry using fallback cert");
@@ -547,7 +548,8 @@ String ota_get_url(String url, String write_to=""){
     httpsclient.print("GET ");
     httpsclient.print(url);
     httpsclient.println(" HTTP/1.0");
-    httpsclient.println("Host: ota.wardriver.uk");
+    httpsclient.print("Host: ");
+    httpsclient.println(ota_hostname);
     httpsclient.println("Connection: close");
     httpsclient.print("User-Agent: ");
     httpsclient.println(generate_user_agent());
@@ -1122,6 +1124,7 @@ void boot_config(){
   gps_allow_stale_time = get_config_int("gps_allow_stale_time", gps_allow_stale_time);
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
   nets_over_uart = get_config_bool("nets_over_uart", nets_over_uart);
+  ota_hostname = get_config_string("ota_hostname", ota_hostname);
 
   boolean sb_bw16 = get_config_bool("sb_bw16", false);
   if (sb_bw16){

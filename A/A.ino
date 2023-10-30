@@ -1122,6 +1122,12 @@ void boot_config(){
     is_5ghz = true;
   }
 
+  if (!rotate_display){
+    display.setRotation(2);
+  } else {
+    display.setRotation(0);
+  }
+
   preferences.begin("wardriver", false);
   ota_optout = preferences.getBool("ota_optout", false);
   wigle_commercial = preferences.getBool("wigle_commercial", false);
@@ -2166,6 +2172,12 @@ void setup() {
     
     boot_config();
     setup_wifi();
+
+    if (!rotate_display){
+      display.setRotation(2);
+    } else {
+      display.setRotation(0);
+    }
 
     Serial2.begin(gps_baud_rate);
 

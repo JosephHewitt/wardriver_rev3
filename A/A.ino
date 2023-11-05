@@ -1961,12 +1961,16 @@ void boot_config(){
                     Serial.println(filename);
                     if (!filename.endsWith(".csv") && filename != "/test.txt"){
                       //Prevent accessing non-csv files, with the exception of test.txt
+                      Serial.println("Not allowed");
                       client.println("Content-type: text/html");
                       client.println();
                       client.print("Not allowed");
                       client.flush();
                       delay(5);
                       client.stop();
+                      buff = "";
+                      filename = "";
+                      break;
                     }
 
                     File reader = SD.open(filename, FILE_READ);

@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.2.0b4";
+const String VERSION = "1.2.0b5";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -75,7 +75,7 @@ const char* default_psk = "wardriver.uk";
 //Max blocklist entry length. 32 = max SSID len.
 #define blocklist_str_len 32
 //How many file references we are willing to hold from the WiGLE upload history.
-#define wigle_history_len 128
+#define wigle_history_len 256
 
 struct mac_addr {
    unsigned char bytes[6];
@@ -135,6 +135,7 @@ TaskHandle_t primary_scan_loop_handle;
 boolean b_working = false; //Set to true when we receive some valid data from side B.
 boolean ota_optout = false; //Set in the web interface
 boolean wigle_commercial = false; //Set in the web interface
+boolean wigle_autoupload = false; //Set in the web interface
 String wigle_api_key = ""; //Set in the web interface
 String wigle_username = ""; //Set automatically via API calls
 
@@ -288,7 +289,7 @@ void wigle_load_history(){
   display.println("Connected");
   display.display();
 
-  httpsclient.println("GET /api/v2/file/transactions?pagestart=0&pageend=200 HTTP/1.0");
+  httpsclient.println("GET /api/v2/file/transactions?pagestart=0&pageend=300 HTTP/1.0");
   httpsclient.println("Host: api.wigle.net");
   httpsclient.println("Connection: close");
   httpsclient.print("User-Agent: ");
@@ -423,13 +424,13 @@ boolean wigle_upload(String path){
   cd_header_len += 22; //Content-Type CSV
   cd_header_len += 45; //Second content-disposition line for "donate" form.
   if (wigle_commercial){
+    Serial.println("WiGLE commerical optin selected.");
     cd_header_len += 4; //"on" + \n\r
   }
   cd_header_len += 22; //New lines (doubled, because it's CR&LF)
   Serial.print("Extra content-length bytes for CD headers: ");
   Serial.println(cd_header_len);
   
-
   httpsclient.println("POST /api/v2/file/upload HTTP/1.0");
   httpsclient.println("Host: api.wigle.net");
   httpsclient.println("Connection: close");
@@ -1116,6 +1117,86 @@ String get_config_string(String key, String def=""){
   return res;
 }
 
+void wigle_upload_all(){
+  //Automatically upload all new capture files since the feature was enabled to WiGLE.
+  long min_fileid = preferences.getLong("wigle_mf",0);
+  boolean did_upload = false;
+  if (min_fileid == 0){
+    Serial.println("WiGLE autoupload min fileid is 0, refusing to upload!");
+    preferences.putLong("wigle_mf",bootcount);
+    Serial.print("set min fileid to ");
+    Serial.println(bootcount);
+    return;
+  }
+  Serial.println("WiGLE automatic upload..");
+  File dir = SD.open("/");
+  while (true) {
+    File entry = dir.openNextFile();
+    if (!entry) {
+      break;
+    }
+    if (!entry.isDirectory()) {
+      String filename = entry.name();
+      if (filename.charAt(0) != '/'){
+        filename = "/";
+        filename.concat(entry.name());
+      }
+      if (!filename.endsWith(".csv")){
+        Serial.print("Bad filetype: ");
+        Serial.println(filename);
+        continue;
+      }
+
+      //Get the bootcount (numerical) part of a filename, for WiGLE references later.
+      String filename_id = "";
+      int first_pos = filename.indexOf("wd3-")+4;
+      int second_pos = filename.indexOf(".", first_pos);
+      filename_id = filename.substring(first_pos, second_pos);
+      unsigned int filename_id_int = (int) filename_id.toInt();
+      if (filename_id_int < min_fileid){
+        Serial.print("Skip ID ");
+        Serial.print(filename_id_int);
+        Serial.print(", less than ");
+        Serial.print(min_fileid);
+        Serial.print(" for file ");
+        Serial.println(filename);
+        continue;
+      } else {
+        Serial.print("File ID ");
+        Serial.print(filename_id_int);
+        Serial.print(" is OK, min is ");
+        Serial.println(min_fileid);
+      }
+
+      struct wigle_file wigle_file_reference = get_wigle_file(filename_id_int, entry.size());
+      
+      Serial.print(filename);
+      Serial.print(" is ");
+      Serial.print(entry.size());
+      Serial.println(" bytes");
+
+      if (wigle_file_reference.fid == 0){
+        Serial.println("Not on WiGLE, will upload");
+        if (wigle_upload(filename)){
+          preferences.putLong("wigle_mf", filename_id_int);
+          delay(2000);
+          did_upload = true;
+        } else {
+          Serial.println("Upload failed. Stopping auto upload now.");
+          return;
+        }
+        
+      }
+    }
+  }
+  Serial.println("Auto upload complete.");
+  if (did_upload){
+    wigle_load_history();
+  } else {
+    Serial.println("Found nothing to upload.");
+  }
+}
+
 void boot_config(){
   //Load configuration variables and perform first time setup if required.
   Serial.println("Setting/loading boot config..");
@@ -1143,7 +1224,8 @@ void boot_config(){
 
   preferences.begin("wardriver", false);
   ota_optout = preferences.getBool("ota_optout", false);
-  wigle_commercial = preferences.getBool("wigle_commercial", false);
+  wigle_commercial = preferences.getBool("wigle_com", false);
+  wigle_autoupload = preferences.getBool("wigle_au", false);
   wigle_api_key = preferences.getString("wigle_api_key", "");
   bool firstrun = preferences.getBool("first", true);
   if (block_reconfigure){
@@ -1412,6 +1494,11 @@ void boot_config(){
         ota_get_url("/wigle.crt", "/wigle.crt");
 
         wigle_load_history();
+        if (wigle_autoupload){
+          wigle_upload_all();
+        } else {
+          Serial.println("WiGLE autoupload disabled.");
+        }
 
         update_available = check_for_updates(is_stable, false);
       }
@@ -1645,14 +1732,24 @@ void boot_config(){
                     client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                     client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h2>WiGLE Configuration</h2>");
                     client.print("<p>Your device can upload captured data directly to WiGLE. Please provide a WiGLE API key below. This can be found at https://wigle.net/account</p>");
+                    if (wigle_api_key.length() > 2){
+                      client.print("<p>An API key is already set. Leave the value as 'configured' unless you wish to change it.</p>");
+                    }
                     client.print("<form method=\"get\" action=\"/wcfg\">API Key ('encoded for use'):<input type=\"text\" name=\"akey\" id=\"akey\" value=\"");
                     if (wigle_api_key.length() > 2){
                       client.print("configured");
                     }
-                    client.print("\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"commercial\"><input type=\"checkbox\" id=\"commercial\" name=\"commercial\" value=\"commercial\"> Allow WiGLE to use this data commercially</label></p></form>");
-                    if (wigle_api_key.length() > 2){
-                      client.print("<p>An API key is already set. Leave the value as 'configured' above unless you wish to change it.</p>");
+                    client.print("\"><br><br><input type=\"submit\" value=\"Submit\"><p><label for=\"commercial\"><input type=\"checkbox\" id=\"commercial\" name=\"commercial\" value=\"commercial\" ");
+                    if (wigle_commercial){
+                      client.print("checked");
                     }
+                    client.println("> Allow WiGLE to use this data commercially</label></p>");
+                    client.print("<p><label for=\"autoupload\"><input type=\"checkbox\" id=\"autoupload\" name=\"autoupload\" value=\"autoupload\" ");
+                    if (wigle_autoupload){
+                      client.print("checked");
+                    }
+                    client.print(">Automatically upload files when device starts up</label></p></form>");
+                    
                     client.println("<br><hr>Additional help is available at https://wardriver.uk</html>");
 
                   }
@@ -1666,9 +1763,21 @@ void boot_config(){
                       wigle_commercial = true;
                       //Really, lets use POST requests for this soon.
                       buff.replace("&commercial=commercial","");
-                      preferences.putBool("wigle_commercial", true);
                       Serial.println("WiGLE commercial optin selected");
+                    } else {
+                      wigle_commercial = false;
                     }
+                    preferences.putBool("wigle_com", wigle_commercial);
+
+                    if (buff.indexOf("&autoupload=autoupload") > -1){
+                      wigle_autoupload = true;
+                      buff.replace("&autoupload=autoupload","");
+                      preferences.putLong("wigle_mf", bootcount);
+                      Serial.println("WiGLE autoupload enabled");
+                    } else {
+                      wigle_autoupload = false;
+                    }
+                    preferences.putBool("wigle_au", wigle_autoupload);
                     int startpos = buff.indexOf("?akey=")+6;
                     int endpos = buff.indexOf(" HTTP");
                     String set_api_key = GP_urldecode(buff.substring(startpos,endpos));

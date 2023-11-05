@@ -456,27 +456,28 @@ boolean wigle_upload(String path){
   //End content-disposition file header:
   httpsclient.println();
   //Start file body:
-  String fbuf = "";
+
+  #define CBUFLEN 1024
+  byte cbuf[CBUFLEN];
+  
   float percent = 0;
   while (filereader.available()){
-    percent = ((float)filereader.position() / (float)filereader.size()) * 100;
-    
-    char c = filereader.read();
-    fbuf.concat(c);
-    if (fbuf.length() >= 512){
-      httpsclient.print(fbuf);
-      fbuf = "";
-      clear_display();
-      display.println("Wigle Upload");
-      display.print(percent);
-      display.println("%");
-      display.display();
+    long bytes_available = filereader.available();
+    int toread = CBUFLEN;
+    if (bytes_available < CBUFLEN){
+      toread = bytes_available;
     }
+    
+    filereader.read(cbuf, toread);
+    httpsclient.write(cbuf, toread);
+    clear_display();
+    display.println("WiGLE Upload");
+    percent = ((float)filereader.position() / (float)filereader.size()) * 100;
+    display.print(percent);
+    display.println("%");
+    display.display();
   }
-  if (fbuf.length() > 0){
-    httpsclient.print(fbuf);
-    fbuf = "";
-  }
+
   //httpsclient.write(filereader);
   //End file body:
   httpsclient.println();
@@ -496,24 +497,36 @@ boolean wigle_upload(String path){
   httpsclient.println();
   httpsclient.flush();
 
-  Serial.println("Uploaded.");
+  Serial.println("File transfer complete");
   clear_display();
-  display.println("Uploaded");
+  display.println("Transfer complete");
   display.display();
+
+  String serverres = "";
 
   while (httpsclient.connected()){
     if (httpsclient.available()){
-      Serial.write(httpsclient.read());
+      char c = httpsclient.read();
+      Serial.write(c);
+      serverres.concat(c);
+    }
+    if (serverres.length() > 1024){
+      Serial.println("Aborting read, large payload");
+      break;
     }
   }
 
   httpsclient.stop();
 
   Serial.println();
-  Serial.println("WiGLE done");
+  Serial.println("WiGLE done, connection closed");
 
-  
-  return true;
+  if (serverres.indexOf("\"success\":true") > -1){
+    Serial.println("Upload success confirmed");
+    return true;
+  }
+  Serial.println("Upload not confirmed");
+  return false;
 }
 
 String ota_get_url(String url, String write_to=""){
@@ -1873,7 +1886,7 @@ void boot_config(){
                       client.print("<h1>Uploading");
                       client.print(filename);
                       client.print("</h1><h2>Check LCD for progress");
-                      client.print("</h2></html>");
+                      client.print("</h2>Once complete, <a href=\"/\">click here</a> to continue.</html>");
                       client.flush();
                       delay(5);
                       client.stop();
@@ -1881,6 +1894,10 @@ void boot_config(){
                       Serial.print("Success? ");
                       Serial.println(success);
                       if (success == true){
+                        clear_display();
+                        display.println("Uploaded OK");
+                        display.display();
+                        delay(1000);
                         wigle_load_history();
                       }
                     }

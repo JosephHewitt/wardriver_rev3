@@ -1435,7 +1435,12 @@ void boot_config(){
   boolean created_network = false; //Set to true automatically when the fallback network is created.
   
   boolean is_stable = true; //Currently running beta or stable, set automatically
+  //Maybe set this to check for any letters, since normal stable version numbers probably don't have any letters.
+  //This should catch rc versions and beta versions though.
   if (VERSION.indexOf("b") > -1){
+    is_stable = false;
+  }
+  if (VERSION.indexOf("r") > -1){
     is_stable = false;
   }
 
@@ -1575,11 +1580,6 @@ void boot_config(){
                     client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head>");
                     if (update_available && !SD.exists("/A.bin") && !SD.exists("/B.bin")){
                       client.println("<p><a href=\"/dlupdate\">Software update available. Click here to download.</a></p>");
-                      client.print("<p>Latest version: ");
-                      client.print(ota_latest_stable);
-                      client.print(" / Latest beta: ");
-                      client.print(ota_latest_beta);
-                      client.println("</p>");
                     } else {
                       if (created_network){
                         client.println("<p>This device can check for updates automatically if connected to the internet.</p>");
@@ -1691,9 +1691,24 @@ void boot_config(){
                     client.print("<h2>Upload firmware</h2>");
                     client.print("<p>Your wardriver will automatically find new updates, but you can also manually upload them using this form</p>");
                     client.print("<input type=\"file\" id=\"file\" /><br><button id=\"read-file\">Read File</button>");
-                    client.print("<p>The upload will take 1-3 minutes and there is no progress bar in this browser, check the wardriver LCD during upload</p>");
-                    client.print("<br><br>v");
+                    client.print("<p>The upload will take 1-3 minutes and there is no progress bar in this browser, check the wardriver LCD during upload</p><br>");
+                    client.print("<br><br>Currently installed: v");
                     client.println(VERSION);
+                    
+                    if (ota_latest_stable.length() > 1 || ota_latest_beta.length() > 1){
+                      client.println("<br><hr><strong>Available software versions</strong>");
+                      if (ota_latest_stable.length() > 1 && ota_latest_stable != VERSION){
+                        client.print("<p>Latest stable version: <a href=\"dlupdate?v=s\">");
+                        client.print(ota_latest_stable);
+                        client.print("</a>");
+                      }
+                      if (ota_latest_beta.length() > 1 && ota_latest_beta != VERSION){
+                        client.print("</p><p>Latest beta: <a href=\"/dlupdate?v=b\">");
+                        client.print(ota_latest_beta);
+                        client.print("</a>");
+                      }
+                      client.println("</p><p>Your wardriver should automatically find the best version to install, but you can choose a specific version to install above.");
+                    }
                     //The very bottom of the homepage contains this JS snippet to send the current epoch value from the browser to the wardriver
                     //Also a snippet to force binary uploads instead of multipart.
                     client.println("<script>const ep=Math.round(Date.now()/1e3);var x=new XMLHttpRequest;x.open(\"GET\",\"time?v=\"+ep,!1),x.send(null); document.querySelector(\"#read-file\").addEventListener(\"click\",function(){if(\"\"==document.querySelector(\"#file\").value){alert(\"no file selected\");return}var e=document.querySelector(\"#file\").files[0],n=new FileReader;n.onload=function(n){let t=new XMLHttpRequest;var l=e.name;t.open(\"POST\",\"/fw?n=\"+l,!0),t.onload=e=>{window.location.href=\"/fwup\"};let r=new Blob([n.target.result],{type:\"application/octet-stream\"});t.send(r)},n.readAsArrayBuffer(e)});</script>");
@@ -1713,6 +1728,16 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /dlupdate") > -1){
+                    boolean install_stable = is_stable;
+                    if (buff.indexOf("?v=b") > -1){
+                      install_stable = false;
+                      Serial.println("Requested beta");
+                    }
+                    if (buff.indexOf("?v=s") > -1){
+                      install_stable = true;
+                      Serial.println("Requested stable");
+                    }
+                    
                     client.println("Content-type: text/html");
                     client.println();
                     Serial.println("/dlupdate requested");
@@ -1722,7 +1747,7 @@ void boot_config(){
                     client.flush();
                     delay(5);
                     client.stop();
-                    check_for_updates(is_stable, true);
+                    check_for_updates(install_stable, true);
                   }
 
                   if (buff.indexOf("GET /wigle-setup") > -1){

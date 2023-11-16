@@ -258,18 +258,14 @@ void wigle_load_history(){
   //This block is duplicated also in wigle_upload, refactor some time?
   //Current root is 1940, double it in case larger certs are used in the future.
   #define ca_len 3880
-  char ca_root[ca_len];
+  byte ca_root[ca_len];
   Serial.println("Loading CA");
   File careader = SD.open("/wigle.crt", FILE_READ);
-  while (careader.available()){
-    byte c = careader.read();
-    ca_root[careader.position()-1] = c;
-    if (careader.position() >= ca_len){
-      careader.close();
-      Serial.println("CA file too large");
-      return;
-    }
+  if (careader.size() > ca_len-2){
+    Serial.println("wigle.crt too large");
+    return;
   }
+  careader.read(ca_root, ca_len);
   careader.close();
   //^
   
@@ -279,7 +275,7 @@ void wigle_load_history(){
 
 
   WiFiClientSecure httpsclient;
-  httpsclient.setCACert(ca_root);
+  httpsclient.setCACert((char*)ca_root);
 
   if (!httpsclient.connect("api.wigle.net", 443)){
     Serial.println("Wigle API connection failed");
@@ -380,25 +376,21 @@ boolean wigle_upload(String path){
   
   //Current root is 1940, double it in case larger certs are used in the future.
   #define ca_len 3880
-  char ca_root[ca_len];
+  byte ca_root[ca_len];
   Serial.println("Loading CA");
   File careader = SD.open("/wigle.crt", FILE_READ);
-  while (careader.available()){
-    byte c = careader.read();
-    ca_root[careader.position()-1] = c;
-    if (careader.position() >= ca_len){
-      careader.close();
-      Serial.println("CA file too large");
-      return false;
-    }
+  if (careader.size() > ca_len-2){
+    Serial.println("wigle.crt too large");
+    return false;
   }
+  careader.read(ca_root, ca_len);
   careader.close();
 
   String boundary = "wduk";
   boundary.concat(esp_random());
   
   WiFiClientSecure httpsclient;
-  httpsclient.setCACert(ca_root);
+  httpsclient.setCACert((char*)ca_root);
 
   if (!httpsclient.connect("api.wigle.net", 443)){
     Serial.println("Wigle API connection failed");

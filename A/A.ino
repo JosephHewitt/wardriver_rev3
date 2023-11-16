@@ -159,7 +159,12 @@ int gps_allow_stale_time = 60000;
 boolean enforce_valid_binary_checksums = true; //Lookup OTA binary checksums online, prevent installation if no match found
 boolean nets_over_uart = false; //Send discovered networks over UART?
 String ota_hostname = "ota.wardriver.uk";
+unsigned long auto_reset_ms = 0;
+float force_lat = 0;
+float force_lon = 0;
 
+#define MAX_AUTO_RESET_MS 1814400000
+#define MIN_AUTO_RESET_MS 7200000
 
 boolean use_fallback_cert = false;
 
@@ -725,6 +730,14 @@ int get_config_int(String key, int def=0){
   return res.toInt();
 }
 
+float get_config_float(String key, int def=0){
+  String res = get_config_option(key);
+  if (res == ""){
+    return def;
+  }
+  return res.toFloat();
+}
+
 String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wardriver busy"){
   File reader = SD.open(filename, FILE_READ);
   //Setup a hash context, and somewhere to keep the output.
@@ -1202,6 +1215,19 @@ void boot_config(){
   enforce_valid_binary_checksums = get_config_bool("enforce_checksums", enforce_valid_binary_checksums);
   nets_over_uart = get_config_bool("nets_over_uart", nets_over_uart);
   ota_hostname = get_config_string("ota_hostname", ota_hostname);
+  auto_reset_ms = get_config_int("auto_reset_ms", auto_reset_ms);
+  force_lat = get_config_float("force_lat", force_lat);
+  force_lon = get_config_float("force_lon", force_lon);
+
+  if (auto_reset_ms != 0){
+    if (auto_reset_ms > MAX_AUTO_RESET_MS){
+      auto_reset_ms = MAX_AUTO_RESET_MS;
+    }
+    if (auto_reset_ms < MIN_AUTO_RESET_MS){
+      auto_reset_ms = MIN_AUTO_RESET_MS;
+    }
+  }
+  
 
   boolean sb_bw16 = get_config_bool("sb_bw16", false);
   if (sb_bw16){
@@ -2552,6 +2578,15 @@ void loop(){
     lcd_show_stats();
     lcd_last_updated = millis();
   }
+  if (auto_reset_ms != 0 && millis() > auto_reset_ms){
+    Serial.println("AUTO RESET TIMER REACHED");
+    clear_display();
+    display.println("AUTO RESET");
+    display.println("Timer reached.");
+    display.display();
+    delay(1250);
+    ESP.restart();
+  }
 }
 
 void save_cell(struct cell_tower tower){
@@ -3032,6 +3067,12 @@ String gps_string(){
   //The module we are using has a precision of 2.5m, accuracy can never be better than that.
   if (accuracy <= 2.5){
     accuracy = 2.5;
+  }
+
+  if (force_lat != 0 && force_lon != 0){
+    lats = String(force_lat, 6);
+    lons = String(force_lon, 6);
+    accuracy = 1;
   }
 
   out = lats + "," + lons + "," + altf + "," + accuracy;

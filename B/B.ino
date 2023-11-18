@@ -33,7 +33,7 @@ String ota_hash = ""; //SHA256 of the OTA update, set automatically.
 
 boolean using_bw16 = false; //Set when advanced config is sb_bw16=yes https://wardriver.uk/advanced_config
 
-#define mac_history_len 256
+#define mac_history_len 1024
 
 struct mac_addr {
    unsigned char bytes[6];
@@ -42,6 +42,7 @@ struct mac_addr {
 struct mac_addr mac_history[mac_history_len];
 unsigned int mac_history_cursor = 0;
 
+int ble_found = 0; //The number of BLE devices found in a single scan, sent to side A.
 int wifi_scan_channel = 1; //The channel to scan (increments automatically)
 
 void setup_wifi(){
@@ -68,6 +69,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             mac_bytes[i] = (unsigned char) values[i];
         }
       
+        ble_found++;
         if (!seen_mac(mac_bytes)){
           save_mac(mac_bytes);
           
@@ -150,11 +152,14 @@ String hex_str(const unsigned char buf[], size_t len)
 void setup() {
   setup_wifi();
   delay(5000);
+  int reset_reason = esp_reset_reason();
   Serial.begin(115200); //PC, if connected.
   Serial.println("Starting");
   
   Serial1.begin(115200,SERIAL_8N1,27,14); //ESP A, pins 27/14
   Serial1.println("REV3!");
+  Serial1.print("RESET=");
+  Serial1.println(reset_reason);
 
   Serial.println("Waiting for config vars");
   Serial1.println("SEND_CONF");
@@ -240,6 +245,9 @@ void setup() {
     Serial2.print("AT\r\n");
     Serial2.flush();
   }
+
+  Serial1.print("RESET=");
+  Serial1.println(reset_reason);
 
   Serial.println("Setting up Bluetooth scanning");
   BLEDevice::init("");
@@ -370,16 +378,17 @@ void loop() {
       }
     }
   }
-  BLEScanResults foundDevices = pBLEScan->start(2.5, false);
+  BLEScanResults foundDevices = pBLEScan->start(2.2, false);
   await_serial();
   serial_lock = true;
   Serial1.print("BLC,");
-  Serial1.println(mac_history_cursor);
+  Serial1.println(ble_found);
   serial_lock = false;
   Serial.print("Devices found: ");
-  Serial.println(mac_history_cursor);
+  Serial.println(ble_found);
   Serial.println("Scan done!");
   pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+  ble_found = 0;
   if (last_temperature == 0 || millis() - last_temperature > 15000){
     read_temperature();
     request_temperature();
@@ -410,13 +419,20 @@ void loop() {
     Serial.println(n);
     if (n > 0){
       for (int i = 0; i < n; i++) {
+        uint8_t *this_bssid_raw = WiFi.BSSID(i);
+        char this_bssid[18] = {0};
+        sprintf(this_bssid, "%02X:%02X:%02X:%02X:%02X:%02X", this_bssid_raw[0], this_bssid_raw[1], this_bssid_raw[2], this_bssid_raw[3], this_bssid_raw[4], this_bssid_raw[5]);
+        if (seen_mac(this_bssid_raw)){
+          continue;
+        }
+        save_mac(this_bssid_raw);
+
         String ssid = WiFi.SSID(i);
         ssid.replace(",","_");
-        //Normally we would use "WIx," as the first value where x is the value of i+1. We're using "WI0," here to make it easier to parse on side A.
-        Serial.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), WiFi.BSSIDstr(i).c_str());
+
         await_serial();
         serial_lock = true;
-        Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), WiFi.BSSIDstr(i).c_str());
+        Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i), this_bssid);
         serial_lock = false;
       }
     }

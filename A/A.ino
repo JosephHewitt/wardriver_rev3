@@ -54,6 +54,8 @@ unsigned int wifi_count;
 unsigned int disp_gsm_count;
 unsigned int disp_wifi_count;
 boolean is_5ghz = false;
+unsigned long side_b_reset_millis;
+unsigned long started_at_millis;
 
 uint32_t chip_id;
 
@@ -2407,6 +2409,7 @@ void setup() {
     clear_display();
     display.println("Starting main..");
     display.display();
+    started_at_millis = millis();
 
     xTaskCreatePinnedToCore(
       primary_scan_loop, /* Function to implement the task */
@@ -2512,7 +2515,8 @@ void lcd_show_stats(){
       display.println("No GSM pos");
     }
   }
-  if (b_working){
+  #define B_RESET_SEARCH_TIME 20000
+  if (b_working && millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
   display.print("BLE:");
   display.print(ble_count);
   if (ble_did_block){
@@ -2521,7 +2525,11 @@ void lcd_show_stats(){
   display.print(" GSM:");
   display.println(disp_gsm_count);
   } else {
-    display.println("ESP-B NO DATA");
+    if (millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
+      display.println("ESP-B NO DATA");
+    } else {
+      display.println("ESP-B RESET");
+    }
   }
   display.println(dt_string());
   display.display();
@@ -2810,6 +2818,34 @@ String parse_bside_line(String buff){
         out = mac_str + "," + ble_name + "," + "[BLE]," + dt_string() + ",0," + rssi + "," + gps_string() + ",BLE";
       }
     }
+  }
+
+  if (buff.indexOf("RESET=") > -1) {
+    if (millis() - started_at_millis < 10000){
+      //We will ignore this if we recently started running because then it's normal behavior, not a fault.
+      Serial.print("IGNORING: ");
+      Serial.println(buff);
+      return out;
+    }
+    String b_reset_reason = buff;
+    b_reset_reason.replace("RESET=","");
+    b_reset_reason.replace("\r","");
+    b_reset_reason.replace("\n","");
+    Serial.print("Side B reports reset, code ");
+    Serial.println(b_reset_reason);
+    File testfilewriter = SD.open("/test.txt", FILE_APPEND);
+    testfilewriter.print("\n\r_B-RST_");
+    testfilewriter.print(b_reset_reason);
+    testfilewriter.print(",ut=");
+    testfilewriter.print(millis());
+    testfilewriter.print(",blc=");
+    testfilewriter.println(ble_count);
+    testfilewriter.close();
+    b_working = false;
+    side_b_reset_millis = millis();
+
+    return out;
+
   }
 
   if (buff.indexOf("WI0,") > -1) {

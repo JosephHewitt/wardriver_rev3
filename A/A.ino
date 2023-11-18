@@ -754,7 +754,7 @@ String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wa
     bbuf[0] = c;
     mbedtls_sha256_update(&ctx, bbuf, 1);
     i++;
-    if (i > 1800){
+    if (i > 50000){
       i = 0;
       if (update_lcd){
         clear_display();

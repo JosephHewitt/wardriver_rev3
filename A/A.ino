@@ -2461,9 +2461,9 @@ void primary_scan_loop(void * parameter){
             }
           }
           
-          filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+          filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", this_bssid, ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
           if (nets_over_uart){
-            Serial.printf("NET=%s,%s,%s,%s,%d,%d,%s,WIFI\n", WiFi.BSSIDstr(i).c_str(), ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+            Serial.printf("NET=%s,%s,%s,%s,%d,%d,%s,WIFI\n", this_bssid, ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
           }
          
         }
@@ -2738,14 +2738,6 @@ boolean seen_mac(unsigned char* mac){
     }
   }
   return false;
-}
-
-void print_mac(struct mac_addr mac){
-  //Print a mac_addr struct nicely.
-  for (int x = 0; x < 6 ; x++){
-    Serial.print(mac.bytes[x],HEX);
-    Serial.print(":");
-  }
 }
 
 boolean mac_cmp(struct mac_addr addr1, struct mac_addr addr2){

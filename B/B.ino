@@ -599,13 +599,6 @@ boolean seen_mac(unsigned char* mac){
   return false;
 }
 
-void print_mac(struct mac_addr mac){
-  for (int x = 0; x < 6 ; x++){
-    Serial.print(mac.bytes[x],HEX);
-    Serial.print(":");
-  }
-}
-
 boolean mac_cmp(struct mac_addr addr1, struct mac_addr addr2){
   for (int y = 0; y < 6 ; y++){
     if (addr1.bytes[y] != addr2.bytes[y]){

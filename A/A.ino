@@ -27,6 +27,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 //The stack size is insufficient for the OTA hashing calls. This is 10K, instead of the default 8K.
 SET_LOOP_TASK_STACK_SIZE(10240);
 
+String b_side_hash_full = "unset"; //Set automatically
+
 //These variables are used for buffering/caching GPS data.
 char nmeaBuffer[100];
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
@@ -1244,6 +1246,7 @@ void boot_config(){
 
   preferences.begin("wardriver", false);
   ota_optout = preferences.getBool("ota_optout", false);
+  b_side_hash_full = preferences.getString("b_checksum","xxxxx");
   wigle_commercial = preferences.getBool("wigle_com", false);
   wigle_autoupload = preferences.getBool("wigle_au", false);
   wigle_api_key = preferences.getString("wigle_api_key", "");
@@ -2354,6 +2357,12 @@ void setup() {
       display.setRotation(0);
     }
 
+    #define hash_log_len 5
+    String b_side_hash = "";
+    for (int x = 0; x < hash_log_len; x++){
+      b_side_hash.concat(b_side_hash_full.charAt(x));
+    }
+
     Serial2.begin(gps_baud_rate);
 
     Serial.print("This device: ");
@@ -2363,6 +2372,8 @@ void setup() {
     filewriter.print(bootcount);
     filewriter.print(", ep=");
     filewriter.print(epoch);
+    filewriter.print(", bsh=");
+    filewriter.print(b_side_hash);
     filewriter.flush();
     filewriter.close();
 

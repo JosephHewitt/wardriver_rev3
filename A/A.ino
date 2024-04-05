@@ -166,6 +166,7 @@ String ota_hostname = "ota.wardriver.uk";
 unsigned long auto_reset_ms = 0;
 float force_lat = 0;
 float force_lon = 0;
+boolean sb_bw16 = false; 
 
 #define MAX_AUTO_RESET_MS 1814400000
 #define MIN_AUTO_RESET_MS 7200000
@@ -1210,6 +1211,18 @@ void boot_config(){
   //Load configuration variables and perform first time setup if required.
   Serial.println("Setting/loading boot config..");
 
+  // Get defaults for boards that utilize ID pins
+  setup_id_pins();
+  byte board_id = read_id_pins();
+
+  switch(board_id){
+    case 1:                 // CoD_Segfault Mini Wardriver Rev2
+      sb_bw16 = true;       // All units have BW16
+      break;
+    default:                // Any boards not using ID pins will be assumed 
+      break;                // to rely on config files for all parameters
+  }
+
   gps_baud_rate = get_config_int("gps_baud_rate", gps_baud_rate);
   rotate_display = get_config_bool("rotate_display", rotate_display);
   block_resets = get_config_bool("block_resets", block_resets);
@@ -1222,6 +1235,7 @@ void boot_config(){
   auto_reset_ms = get_config_int("auto_reset_ms", auto_reset_ms);
   force_lat = get_config_float("force_lat", force_lat);
   force_lon = get_config_float("force_lon", force_lon);
+  sb_bw16 = get_config_bool("sb_bw16", sb_bw16);
 
   if (auto_reset_ms != 0){
     if (auto_reset_ms > MAX_AUTO_RESET_MS){
@@ -1232,8 +1246,6 @@ void boot_config(){
     }
   }
   
-
-  boolean sb_bw16 = get_config_bool("sb_bw16", false);
   if (sb_bw16){
     is_5ghz = true;
   }
@@ -2414,7 +2426,20 @@ void setup() {
     filename = filename + ".csv";
     Serial.println(filename);
     filewriter = SD.open(filename, FILE_APPEND);
-    filewriter.print("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk " + device_type_string() + ",release=1.0.0,device=wardriver.uk " + device_type_string() + ",display=i2c LCD,board=wardriver.uk " + device_type_string() + ",brand=JHewitt\nMAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n");
+    
+    byte board_id = read_id_pins();
+    
+    switch(board_id){
+      case 1: // CoD_Sefault Mini Wardriver rev2
+        filewriter.println("WigleWifi-1.4,appRelease=" + VERSION + ",model=Mini Wardriver Rev2,release=1.0.0,device=tim,display=i2c LCD,board=tim,brand=CoD_Segfault");
+        break;
+      default:
+        filewriter.println("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk " + device_type_string() + ",release=1.0.0,device=wardriver.uk " + device_type_string() + ",display=i2c LCD,board=wardriver.uk " + device_type_string() + ",brand=JHewitt");
+        break;
+    }
+    
+    
+    filewriter.println("MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type");
     filewriter.flush();
     
     clear_display();
@@ -3599,4 +3624,22 @@ String generate_user_agent(){
   ret.concat(" / ");
   ret.concat(VERSION);
   return ret;
+}
+
+void setup_id_pins(){
+  pinMode(13, INPUT_PULLDOWN); // IO13 is A/B identifier pin
+  pinMode(25, INPUT_PULLDOWN); // All other pins are board identifers
+  pinMode(26, INPUT_PULLDOWN);
+  pinMode(32, INPUT_PULLDOWN);
+  pinMode(33, INPUT_PULLDOWN);
+}
+
+byte read_id_pins(){
+  byte board_id = 0;
+  board_id = digitalRead(25);                     // shift bits to get a board ID
+  board_id = (board_id << 1) + digitalRead(26);
+  board_id = (board_id << 1) + digitalRead(32);
+  board_id = (board_id << 1) + digitalRead(33);
+
+  return board_id;
 }

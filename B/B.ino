@@ -161,6 +161,17 @@ void setup() {
   Serial1.print("RESET=");
   Serial1.println(reset_reason);
 
+  setup_id_pins();
+  byte board_id = read_id_pins();
+
+  switch(board_id){
+    case 1:                 // CoD_Segfault Mini Wardriver Rev2
+      using_bw16 = true;    // All units have BW16
+      break;
+    default:                // Any boards not using ID pins will be assumed 
+      break;                // to rely on config files for all parameters
+  }
+
   Serial.println("Waiting for config vars");
   Serial1.println("SEND_CONF");
   Serial1.flush();
@@ -620,3 +631,22 @@ void clear_mac_history(){
 
   mac_history_cursor = 0;
 }
+
+void setup_id_pins(){
+  pinMode(13, INPUT_PULLUP); // IO13 is A/B identifier pin
+  pinMode(25, INPUT_PULLDOWN); // All other pins are board identifers
+  pinMode(26, INPUT_PULLDOWN);
+  pinMode(32, INPUT_PULLDOWN);
+  pinMode(33, INPUT_PULLDOWN);
+}
+
+byte read_id_pins(){
+  byte board_id = 0;
+  board_id = digitalRead(25);                     // shift bits to get a board ID
+  board_id = (board_id << 1) + digitalRead(26);
+  board_id = (board_id << 1) + digitalRead(32);
+  board_id = (board_id << 1) + digitalRead(33);
+
+  return board_id;
+}
+

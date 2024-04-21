@@ -149,6 +149,7 @@ String wigle_username = ""; //Set automatically via API calls
 #define DEVICE_REV3_5    2
 #define DEVICE_REV4      3
 #define DEVICE_REV3_5GM  4
+#define DEVICE_CSF_MINI  5
 byte DEVICE_TYPE = DEVICE_UNKNOWN;
 
 #define HTTP_TIMEOUT_MS 750
@@ -1211,16 +1212,9 @@ void boot_config(){
   //Load configuration variables and perform first time setup if required.
   Serial.println("Setting/loading boot config..");
 
-  // Get defaults for boards that utilize ID pins
-  setup_id_pins();
-  byte board_id = read_id_pins();
-
-  switch(board_id){
-    case 1:                 // CoD_Segfault Mini Wardriver Rev2
-      sb_bw16 = true;       // All units have BW16
-      break;
-    default:                // Any boards not using ID pins will be assumed 
-      break;                // to rely on config files for all parameters
+  if (DEVICE_TYPE == DEVICE_CSF_MINI){
+    // CoD_Segfault Mini Wardriver Rev2 always has a BW16
+    sb_bw16 = true;
   }
 
   gps_baud_rate = get_config_int("gps_baud_rate", gps_baud_rate);
@@ -2279,6 +2273,8 @@ void setup() {
       delay(4000);
     }
     delay(1500);
+
+    setup_id_pins();
   
     if(!SD.begin()){
         Serial.println("SD Begin failed!");
@@ -2335,6 +2331,8 @@ void setup() {
     filewriter.print(reset_reason);
     filewriter.print(", id=");
     filewriter.print(chip_id);
+    filewriter.print(", bid=");
+    filewriter.print(read_id_pins());
     filewriter.flush();
     if (wrote < 1){
       while(true){
@@ -2427,18 +2425,7 @@ void setup() {
     Serial.println(filename);
     filewriter = SD.open(filename, FILE_APPEND);
     
-    byte board_id = read_id_pins();
-    
-    switch(board_id){
-      case 1: // CoD_Sefault Mini Wardriver rev2
-        filewriter.println("WigleWifi-1.4,appRelease=" + VERSION + ",model=Mini Wardriver Rev2,release=1.0.0,device=tim,display=i2c LCD,board=tim,brand=CoD_Segfault");
-        break;
-      default:
-        filewriter.println("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk " + device_type_string() + ",release=1.0.0,device=wardriver.uk " + device_type_string() + ",display=i2c LCD,board=wardriver.uk " + device_type_string() + ",brand=JHewitt");
-        break;
-    }
-    
-    
+    filewriter.print("WigleWifi-1.4,appRelease=wardriver.uk " + VERSION + ",model=" + device_type_string() + ",release=wardriver.uk " + VERSION + ",device=" + device_string() + ",display=i2c LCD,board=" + device_board_string() + ",brand=" + device_brand_string() + "\n");
     filewriter.println("MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type");
     filewriter.flush();
     
@@ -3475,8 +3462,60 @@ String device_type_string(){
       ret = "generic";
       break;
 
+    case DEVICE_CSF_MINI:
+      ret = "Mini Wardriver Rev2";
+      break;
+
     default:
       ret = "generic";
+      break;
+  }
+  
+  return ret;
+}
+
+String device_brand_string(){
+  String ret = "JHewitt";
+  switch (DEVICE_TYPE){
+    case DEVICE_CSF_MINI:
+      ret = "CoD_Segfault";
+      break;
+
+    default:
+      ret = "JHewitt";
+      break;
+  }
+
+  return ret;
+}
+
+String device_string(){
+  // Used for the "device" parameter in WiGLE CSV headers.
+  String ret = "";
+  switch (DEVICE_TYPE){
+    case DEVICE_CSF_MINI:
+      ret = "tim";
+      break;
+
+    default:
+      ret = "wardriver.uk " + device_type_string();
+      break;
+  }
+  
+  return ret;
+}
+
+String device_board_string(){
+  // Used for the "board" parameter in WiGLE CSV headers.
+  String ret = "";
+  switch (DEVICE_TYPE){
+    case DEVICE_CSF_MINI:
+      ret = "tim";
+      break;
+
+    default:
+      ret = "wardriver.uk " + device_type_string();
+      break;
   }
   
   return ret;
@@ -3486,6 +3525,17 @@ byte identify_model(){
   //Block until we know for sure what hardware model this is. Can take a while so cache the response.
   //Return a byte indicating the model, such as DEVICE_REV3.
   //Only call *before* the main loops start, otherwise multiple threads could be trying to access the serial.
+
+  //Start by reading board/PCB identifier pins, since this responds immediately.
+  byte board_id = read_id_pins();
+  switch(board_id){
+    case 1:
+      DEVICE_TYPE = DEVICE_CSF_MINI; // CoD_Segfault Mini Wardriver Rev2
+      return DEVICE_TYPE;
+    default:                         // No board ID, continue with identification
+      break;
+  }
+
 
   if (is_5ghz && DEVICE_TYPE == DEVICE_REV3){
     //We already determined we're REV3, but now we have 5Ghz. Must be modded.
@@ -3627,6 +3677,7 @@ String generate_user_agent(){
 }
 
 void setup_id_pins(){
+  //The following pins are used for board identification
   pinMode(13, INPUT_PULLDOWN); // IO13 is A/B identifier pin
   pinMode(25, INPUT_PULLDOWN); // All other pins are board identifers
   pinMode(26, INPUT_PULLDOWN);
@@ -3635,11 +3686,14 @@ void setup_id_pins(){
 }
 
 byte read_id_pins(){
+  //Read a byte denoting the board ID, used for device identification
   byte board_id = 0;
   board_id = digitalRead(25);                     // shift bits to get a board ID
   board_id = (board_id << 1) + digitalRead(26);
   board_id = (board_id << 1) + digitalRead(32);
   board_id = (board_id << 1) + digitalRead(33);
 
+  Serial.print("Board ID = ");
+  Serial.println(board_id);
   return board_id;
 }

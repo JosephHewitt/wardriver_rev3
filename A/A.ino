@@ -2425,7 +2425,7 @@ void setup() {
     Serial.println(filename);
     filewriter = SD.open(filename, FILE_APPEND);
     
-    filewriter.print("WigleWifi-1.4,appRelease=" + VERSION + ",model=wardriver.uk " + device_type_string() + ",release=" + VERSION + ",device=wardriver.uk " + device_type_string() + ",display=i2c LCD,board=wardriver.uk " + device_type_string() + ",brand=" + device_brand_string() + "\n");
+    filewriter.print("WigleWifi-1.4,appRelease=wardriver.uk " + VERSION + ",model=" + device_type_string() + ",release=wardriver.uk " + VERSION + ",device=" + device_string() + ",display=i2c LCD,board=" + device_board_string() + ",brand=" + device_brand_string() + "\n");
     filewriter.println("MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type");
     filewriter.flush();
     
@@ -3468,6 +3468,7 @@ String device_type_string(){
 
     default:
       ret = "generic";
+      break;
   }
   
   return ret;
@@ -3485,6 +3486,38 @@ String device_brand_string(){
       break;
   }
 
+  return ret;
+}
+
+String device_string(){
+  // Used for the "device" parameter in WiGLE CSV headers.
+  String ret = "";
+  switch (DEVICE_TYPE){
+    case DEVICE_CSF_MINI:
+      ret = "tim";
+      break;
+
+    default:
+      ret = "wardriver.uk " + device_type_string();
+      break;
+  }
+  
+  return ret;
+}
+
+String device_board_string(){
+  // Used for the "board" parameter in WiGLE CSV headers.
+  String ret = "";
+  switch (DEVICE_TYPE){
+    case DEVICE_CSF_MINI:
+      ret = "tim";
+      break;
+
+    default:
+      ret = "wardriver.uk " + device_type_string();
+      break;
+  }
+  
   return ret;
 }
 

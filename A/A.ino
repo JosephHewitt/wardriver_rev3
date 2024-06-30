@@ -1279,7 +1279,7 @@ void boot_config(){
     display.display();
     preferences.clear();
     delay(2000);
-    firstrun = true;
+    ESP.restart();
   }
 
   if (!firstrun && !block_resets){
@@ -2419,9 +2419,24 @@ void setup() {
     
     Serial.println("Opening destination file for writing");
 
-    String filename = "/wd3-";
-    filename = filename + bootcount;
-    filename = filename + ".csv";
+    String filename = "";
+    while (filename == "" || SD.exists(filename)){
+      filename = "/wd3-";
+      filename = filename + bootcount;
+      filename = filename + ".csv";
+      if (SD.exists(filename)){
+        Serial.print("File already exists at ");
+        Serial.print(filename);
+        bootcount++;
+        filename = "";
+        preferences.begin("wardriver", false);
+        preferences.putULong("bootcount", bootcount);
+        preferences.end();
+        Serial.print("Incremented bootcount to ");
+        Serial.println(bootcount);
+      }
+    }
+    Serial.print("Opening file for main session: ");
     Serial.println(filename);
     filewriter = SD.open(filename, FILE_APPEND);
     

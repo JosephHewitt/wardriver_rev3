@@ -547,6 +547,7 @@ void loop2( void * parameter) {
           
         }
         
+        await_serial();
         serial_lock = true;
         Serial.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), channel, rssi, enc_type, mac.c_str());
         Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), channel, rssi, enc_type, mac.c_str());
@@ -557,9 +558,12 @@ void loop2( void * parameter) {
         if (using_bw16){
           if (s2buf.indexOf("[ATWS]") > -1){
             had_gsm_data = true;
+            await_serial();
+            serial_lock = true;
             Serial1.print("5G,");
             Serial1.print(count_5ghz);
             Serial1.print("\n");
+            serial_lock = false;
             Serial.print("BW16 done, 5GHz count: ");
             Serial.println(count_5ghz);
             count_5ghz = 0;

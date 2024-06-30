@@ -2854,7 +2854,9 @@ String parse_bside_line(String buff){
     testfilewriter.print(",ut=");
     testfilewriter.print(millis());
     testfilewriter.print(",blc=");
-    testfilewriter.println(ble_count);
+    testfilewriter.print(ble_count);
+    testfilewriter.print(",ep=");
+    testfilewriter.println(epoch);
     testfilewriter.close();
     b_working = false;
     side_b_reset_millis = millis();

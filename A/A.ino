@@ -130,7 +130,6 @@ unsigned int wigle_history_cursor = 0;
 unsigned long lcd_last_updated;
 
 #define YEAR_2020 1577836800 //epoch value for 1st Jan 2020; dates older than this are considered wrong (this code was written after 2020).
-unsigned long epoch;
 unsigned long epoch_updated_at;
 const char* ntpServer = "pool.ntp.org";
 
@@ -248,6 +247,21 @@ struct wigle_file get_wigle_file(int fid, unsigned long fsize){
   struct wigle_file wigle_file_reference;
   wigle_file_reference = (wigle_file){.fid = 0, .fsize = 0, .discovered_gps = 0, .total_gps = 0, .wait = true};
   return wigle_file_reference;
+}
+
+unsigned long get_epoch(boolean await_valid=false) {
+  //Return epoch from system clock.
+
+  time_t now;
+  struct tm timeinfo;
+  if (await_valid){
+    //This seems to just loop for ~5sec or until the date is valid. Possibly required for NTP?
+    if (!getLocalTime(&timeinfo)) {
+      return(0);
+    }
+  }
+  time(&now);
+  return now;
 }
 
 void wigle_load_history(){
@@ -1514,10 +1528,9 @@ void boot_config(){
         display.display();
         Serial.println("Connected, getting the time");
         configTime(0, 0, ntpServer);
-        epoch = getTime();
-        epoch_updated_at = millis();
+
         Serial.print("Time is now set to ");
-        Serial.println(epoch);
+        Serial.println(get_epoch(true));
         Serial.println("Continuing..");
         String ota_test = ota_get_url("/");
         Serial.println(ota_test);
@@ -2017,15 +2030,14 @@ void boot_config(){
                     int endpos = buff.indexOf(" ",startpos);
                     String newtime_str = buff.substring(startpos,endpos);
                     unsigned long newtime = atol(newtime_str.c_str());
-                    if (epoch < YEAR_2020){
+                    if (get_epoch() < YEAR_2020){
                       //if the epoch value is set to something before 2020, we can be quite sure it is inaccurate.
                       if (newtime > YEAR_2020){
                         //A very basic validity test for the datetime value issued by the client.
                         Serial.println("Current clock is inaccurate, using time from client");
-                        epoch = newtime;
+                        set_sys_clock(newtime);
                         Serial.print("epoch is now ");
-                        Serial.println(epoch);
-                        epoch_updated_at = millis();
+                        Serial.println(get_epoch());
                       }
                     }
                   }
@@ -2373,7 +2385,7 @@ void setup() {
       b_side_hash.concat(b_side_hash_full.charAt(x));
     }
 
-    Serial2.begin(gps_baud_rate);
+    Serial2.begin(gps_baud_rate,SERIAL_8N1,16,17);
 
     Serial.print("This device: ");
     Serial.println(device_type_string());
@@ -2381,7 +2393,7 @@ void setup() {
     filewriter.print(", bc=");
     filewriter.print(bootcount);
     filewriter.print(", ep=");
-    filewriter.print(epoch);
+    filewriter.print(get_epoch());
     filewriter.print(", bsh=");
     filewriter.print(b_side_hash);
     filewriter.flush();
@@ -2579,13 +2591,11 @@ void lcd_show_stats(){
 
 void loop(){
   //The main loop for the second core; handles GPS, "Side B" communication, and LCD refreshes.
-  update_epoch();
   while (Serial2.available()){
     char c = Serial2.read();
     if (nmea.process(c)){
       if (nmea.isValid()){
         lastgps = millis();
-        update_epoch();
       }
     }
   }
@@ -2621,6 +2631,7 @@ void loop(){
     disp_gsm_count = gsm_count;
   }
   if (lcd_last_updated == 0 || millis() - lcd_last_updated > 1000){
+    gps_time_sync();
     lcd_show_stats();
     lcd_last_updated = millis();
   }
@@ -2871,7 +2882,7 @@ String parse_bside_line(String buff){
     testfilewriter.print(",blc=");
     testfilewriter.print(ble_count);
     testfilewriter.print(",ep=");
-    testfilewriter.println(epoch);
+    testfilewriter.println(get_epoch());
     testfilewriter.close();
     b_working = false;
     side_b_reset_millis = millis();
@@ -3051,7 +3062,7 @@ String parse_bside_line(String buff){
 
 String dt_string(){
   //Return a datetime String using local timekeeping and GPS data.
-  time_t now = epoch;
+  time_t now = get_epoch();
   struct tm ts;
   char buf[80];
 
@@ -3242,38 +3253,42 @@ String get_latest_datetime(String filename, boolean date_only){
   return "";
 }
 
-void update_epoch(){
-  //Update the global epoch variable using the GPS time source.
-  String gps_dt = dt_string_from_gps();
-  if (!nmea.isValid() || lastgps == 0 || gps_dt.length() < 5){
-    unsigned int tdiff_sec = (millis()-epoch_updated_at)/1000;
-    if (tdiff_sec < 1){
-      return;
-    }
-    epoch += tdiff_sec;
-    epoch_updated_at = millis();
-    return;
-  }
-  
-  struct tm tm;
+boolean set_sys_clock(unsigned long new_epoch){
+  //Wrapper function to set sys clock to epoch value using standard POSIX functions
 
-  strptime(gps_dt.c_str(), "%Y-%m-%d %H:%M:%S", &tm );
-  epoch = mktime(&tm);
-  epoch_updated_at = millis();
+  struct timeval val;
+  int ret;
+
+  val.tv_sec = new_epoch;
+  val.tv_usec = 0;
+  ret = settimeofday(&val, NULL);
+
+  if (ret == 0){
+    epoch_updated_at = millis();
+    return true;
+  } else {
+    return false;
+  }
 }
 
-unsigned long getTime() {
-  //Use NTP to get the current epoch value.
-  
-  time_t now;
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return(0);
+void gps_time_sync(){
+  //Sync the time with GPS if we have a lock.
+  if (!nmea.isValid()){
+    return;
   }
-  time(&now);
-  Serial.print("Got time from NTP: ");
-  Serial.println(now);
-  return now;
+
+  String gps_dt = dt_string_from_gps();
+  if (gps_dt.length() < 5){
+    return;
+  }
+
+  struct tm tm;
+  unsigned long this_epoch = 0;
+
+  strptime(gps_dt.c_str(), "%Y-%m-%d %H:%M:%S", &tm );
+  this_epoch = (unsigned long)mktime(&tm);
+
+  set_sys_clock(this_epoch);
 }
 
 struct coordinates get_cell_pos(String wigle_key){

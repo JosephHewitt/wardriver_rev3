@@ -130,7 +130,6 @@ unsigned int wigle_history_cursor = 0;
 unsigned long lcd_last_updated;
 
 #define YEAR_2020 1577836800 //epoch value for 1st Jan 2020; dates older than this are considered wrong (this code was written after 2020).
-unsigned long epoch_updated_at;
 const char* ntpServer = "pool.ntp.org";
 
 TaskHandle_t primary_scan_loop_handle;
@@ -3264,7 +3263,6 @@ boolean set_sys_clock(unsigned long new_epoch){
   ret = settimeofday(&val, NULL);
 
   if (ret == 0){
-    epoch_updated_at = millis();
     return true;
   } else {
     return false;

@@ -33,7 +33,6 @@ String b_side_hash_full = "unset"; //Set automatically
 char nmeaBuffer[100];
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 unsigned long lastgps = 0;
-String last_dt_string = "";
 String last_lats = "";
 String last_lons = "";
 
@@ -3075,7 +3074,7 @@ String dt_string(){
 String dt_string_from_gps(){
   //Return a datetime String using GPS data only.
   String datetime = "";
-  if (nmea.isValid() && nmea.getYear() > 0){
+  if (nmea.getYear() > 0){
     datetime += nmea.getYear();
     datetime += "-";
     datetime += nmea.getMonth();
@@ -3087,9 +3086,6 @@ String dt_string_from_gps(){
     datetime += nmea.getMinute();
     datetime += ":";
     datetime += nmea.getSecond();
-    last_dt_string = datetime;
-  } else if (lastgps + gps_allow_stale_time > millis()) {
-    datetime = last_dt_string;
   }
   return datetime;
 }
@@ -3270,10 +3266,7 @@ boolean set_sys_clock(unsigned long new_epoch){
 }
 
 void gps_time_sync(){
-  //Sync the time with GPS if we have a lock.
-  if (!nmea.isValid()){
-    return;
-  }
+  //Sync the time with GPS data if available.
 
   String gps_dt = dt_string_from_gps();
   if (gps_dt.length() < 5){
@@ -3285,6 +3278,10 @@ void gps_time_sync(){
 
   strptime(gps_dt.c_str(), "%Y-%m-%d %H:%M:%S", &tm );
   this_epoch = (unsigned long)mktime(&tm);
+
+  if (this_epoch < YEAR_2020){
+    return;
+  }
 
   set_sys_clock(this_epoch);
 }

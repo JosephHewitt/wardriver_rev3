@@ -65,7 +65,8 @@ void await_serial(){
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
        // Looking for specific BT MAC addy and make us aware-Vap
-       String tazMac = "your_desired_mac_address";
+       // Specifically BTLE for Tasers issued by most LEO's
+       String tazMac = "sus_mac_address";
        String realMac = String((char *) &advertisedDevice.getScanRecord()->getAPPSK());
     
        if (tazMac.equals(realMac)) {

@@ -1,6 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side B" of the wardriver hardware revision 3.
-
+//Adding some extras- BTLE ID Alert, Temp conversion and Rogue cell tower alerts coming soon
+//Vap0r -9/9/2024
 //Serial = PC, 115200
 //Serial1 = ESP32 (side A), 115200
 //Serial2 = SIM800L module, 9600
@@ -33,6 +34,8 @@ String ota_hash = ""; //SHA256 of the OTA update, set automatically.
 
 boolean using_bw16 = false; //Set when advanced config is sb_bw16=yes https://wardriver.uk/advanced_config
 
+pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks()); //Register callback for BT detect- Vap
+
 #define mac_history_len 1024
 
 struct mac_addr {
@@ -61,6 +64,15 @@ void await_serial(){
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
+       // Looking for specific BT MAC addy and make us aware-Vap
+       // Specifically BTLE for Tasers issued by most LEO's
+       String tazMac = "sus_mac_address";
+       String realMac = String((char *) &advertisedDevice.getScanRecord()->getAPPSK());
+    
+       if (tazMac.equals(realMac)) {
+         // If its a match let us know
+         Serial.println("ALERT: Behave. Taser detected!");
+         // Maybe add a led buzzer or flash the OLED -Vap
       unsigned char mac_bytes[6];
       int values[6];
   

@@ -730,6 +730,9 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
 
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
+  //Turn off entirely to cleanup any references to active networks
+  WiFi.mode(WIFI_OFF);
+  delay(250);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
 }
@@ -2471,14 +2474,20 @@ void setup() {
 
 void primary_scan_loop(void * parameter){
   //This core will be dedicated entirely to WiFi scanning in an infinite loop.
+  setup_wifi();
   while (true){
     disp_wifi_count = wifi_count;
     wifi_count = 0;
-    setup_wifi();
     for(int scan_channel = 1; scan_channel < 14; scan_channel++){
       yield();
       //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
       int n = WiFi.scanNetworks(false,true,false,110,scan_channel);
+      if (n < 0){
+        //Got a scan error, add a delay to allow other tasks on this core to run and to hopefully let WiFi issues settle down
+        Serial.print("SCAN FAILURE ");
+        Serial.println(n);
+        delay(1000);
+      }
       if (n > 0){
         wifi_count = wifi_count + n;
         for (int i = 0; i < n; i++) {

@@ -46,6 +46,10 @@ int ble_found = 0; //The number of BLE devices found in a single scan, sent to s
 int wifi_scan_channel = 1; //The channel to scan (increments automatically)
 
 void setup_wifi(){
+  //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
+  //Turn off entirely to cleanup any references to active networks
+  WiFi.mode(WIFI_OFF);
+  delay(250);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
 }

@@ -393,7 +393,7 @@ void loop() {
       }
     }
   }
-  BLEScanResults* foundDevices = pBLEScan->start(2.2, false);
+  BLEScanResults foundDevices = pBLEScan->start(2.2, false);
   await_serial();
   serial_lock = true;
   Serial1.print("BLC,");

@@ -2320,6 +2320,34 @@ void setup() {
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     Serial.printf("SD Card Size: %lluMB\n", cardSize);
 
+    Serial.println("Attempting GPS date/time sync..");
+
+    Serial2.begin(gps_baud_rate,SERIAL_8N1,16,17);
+
+    for (int x = 0; x < 3000; x++){
+      int c_count = 0;
+      while (Serial2.available()){
+        c_count++;
+        if (c_count > 128){
+          break;
+        }
+        char c = Serial2.read();
+        if (nmea.process(c)){
+          if (nmea.isValid()){
+            lastgps = millis();
+            gps_time_sync();
+          }
+        }
+      }
+      if (dt_string_from_gps() != ""){
+        break;
+      }
+      delay(1);
+    }
+    gps_time_sync();
+    Serial.print("Date/time is now: ");
+    Serial.println(dt_string_from_gps());
+
     while (!filewriter){
       filewriter = SD.open("/test.txt", FILE_APPEND);
       if (!filewriter){
@@ -2386,8 +2414,6 @@ void setup() {
     for (int x = 0; x < hash_log_len; x++){
       b_side_hash.concat(b_side_hash_full.charAt(x));
     }
-
-    Serial2.begin(gps_baud_rate,SERIAL_8N1,16,17);
 
     Serial.print("This device: ");
     Serial.println(device_type_string());

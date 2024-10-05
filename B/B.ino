@@ -80,16 +80,12 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
           String ble_name = advertisedDevice.getName().c_str();
           ble_name.replace(",","_");
           
-          await_serial();
-          serial_lock = true;
-          Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
           Serial1.print("BL,");
           Serial1.print(advertisedDevice.getRSSI());
           Serial1.print(",");
           Serial1.print(advertisedDevice.getAddress().toString().c_str());
           Serial1.print(",");
           Serial1.println(ble_name);
-          serial_lock = false;
         }
       }
     }
@@ -233,7 +229,7 @@ void setup() {
     Serial.println("Using BW16 instead of SIM800L");
   }
 
-  Serial2.begin(baud_rate); //SIM800L/BW16
+  Serial2.begin(baud_rate,SERIAL_8N1,16,17); //SIM800L/BW16
   delay(50);
   if (!using_bw16){
     Serial.println("Requesting data from SIM");
@@ -272,8 +268,8 @@ void setup() {
   pBLEScan = BLEDevice::getScan(); //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
-  pBLEScan->setInterval(50);
-  pBLEScan->setWindow(40);  // less or equal setInterval value
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(50);  // less or equal setInterval value
 
 
   Serial.println("Setting up multithreading");
@@ -282,7 +278,7 @@ void setup() {
       "loop2", /* Name of the task */
       10000,  /* Stack size in words */
       NULL,  /* Task input parameter */
-      0,  /* Priority of the task */
+      3,  /* Priority of the task */
       &loop2handle,  /* Task handle. */
       0); /* Core where the task should run */
 
@@ -396,9 +392,10 @@ void loop() {
       }
     }
   }
-  BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
+
   await_serial();
   serial_lock = true;
+  BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
   Serial1.print("BLC,");
   Serial1.println(ble_found);
   serial_lock = false;
@@ -406,6 +403,7 @@ void loop() {
   Serial.println(ble_found);
   Serial.println("Scan done!");
   pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+  yield();
   ble_found = 0;
   if (last_temperature == 0 || millis() - last_temperature > 15000){
     read_temperature();
@@ -467,6 +465,8 @@ void loop2( void * parameter) {
   boolean had_gsm_data = false;
   int count_5ghz = 0;
   while (true) {
+    yield();
+    delay(10);
     while (Serial1.available()){
       //ESP A rarely talks to us, but it's usually important
       String a_buff = Serial1.readStringUntil('\n');

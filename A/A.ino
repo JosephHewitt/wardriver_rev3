@@ -2478,7 +2478,7 @@ void primary_scan_loop(void * parameter){
   while (true){
     disp_wifi_count = wifi_count;
     wifi_count = 0;
-    for(int scan_channel = 1; scan_channel < 14; scan_channel++){
+    for(int scan_channel = 1; scan_channel < 12; scan_channel++){
       yield();
       //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
       int n = WiFi.scanNetworks(false,true,false,110,scan_channel);

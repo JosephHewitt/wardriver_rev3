@@ -263,6 +263,18 @@ unsigned long get_epoch(boolean await_valid=false) {
   return now;
 }
 
+String dt_string(time_t now=0){
+  //Return a datetime String from a time_t epoch value
+  struct tm ts;
+  char buf[80];
+
+  ts = *localtime(&now);
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ts);
+  String out = String(buf);
+
+  return out;
+}
+
 void wigle_load_history(){
   wigle_history_cursor = 0;
   
@@ -1674,21 +1686,6 @@ void boot_config(){
 
                         struct wigle_file wigle_file_reference = get_wigle_file(filename_id_int, entry.size());
                         
-                        Serial.print(filename);
-                        Serial.print(" is ");
-                        Serial.print(entry.size());
-                        Serial.println(" bytes");
-
-                        if (wigle_file_reference.fid == 0){
-                          Serial.println("^Not on WiGLE");
-                        } else {
-                          Serial.print("^WiGLE info= discovered:");
-                          Serial.print(wigle_file_reference.discovered_gps);
-                          Serial.print(", total:");
-                          Serial.println(wigle_file_reference.total_gps);
-                        }
-
-                        
                         client.print("<tr><td>");
                         client.print("<a href=\"/download?fn=");
                         client.print(filename);
@@ -2547,9 +2544,9 @@ void primary_scan_loop(void * parameter){
             }
           }
           
-          filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", this_bssid, ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+          filewriter.printf("%s,%s,%s,%s,%d,%d,%s,WIFI\n", this_bssid, ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string(get_epoch()).c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
           if (nets_over_uart){
-            Serial.printf("NET=%s,%s,%s,%s,%d,%d,%s,WIFI\n", this_bssid, ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string().c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
+            Serial.printf("NET=%s,%s,%s,%s,%d,%d,%s,WIFI\n", this_bssid, ssid.c_str(), security_int_to_string(WiFi.encryptionType(i)).c_str(), dt_string(get_epoch()).c_str(), WiFi.channel(i), WiFi.RSSI(i), gps_string().c_str());
           }
          
         }
@@ -2619,7 +2616,7 @@ void lcd_show_stats(){
       display.println("ESP-B RESET");
     }
   }
-  display.println(dt_string());
+  display.println(dt_string(get_epoch()));
   display.display();
   if (gsm_count > 0){
     disp_gsm_count = gsm_count;
@@ -2894,7 +2891,7 @@ String parse_bside_line(String buff){
         Serial.println(buff);
 
         mac_str.toUpperCase();
-        out = mac_str + "," + ble_name + "," + "[BLE]," + dt_string() + ",0," + rssi + "," + gps_string() + ",BLE";
+        out = mac_str + "," + ble_name + "," + "[BLE]," + dt_string(get_epoch()) + ",0," + rssi + "," + gps_string() + ",BLE";
       }
     }
   }
@@ -2976,7 +2973,7 @@ String parse_bside_line(String buff){
 
         String authtype = security_int_to_string((int) security_raw.toInt());
         
-        out = mac_str + "," + ssid + "," + authtype + "," + dt_string() + "," + channel + "," + rssi + "," + gps_string() + ",WIFI";
+        out = mac_str + "," + ssid + "," + authtype + "," + dt_string(get_epoch()) + "," + channel + "," + rssi + "," + gps_string() + ",WIFI";
       }
     }
     
@@ -3051,7 +3048,7 @@ String parse_bside_line(String buff){
         tower.pos = cell_pos;
       }
       
-      out = wigle_cell_key + "," + cell_operator + ",GSM;" + mccmnc + "," + dt_string() + "," + arfcn + "," + rssi_int + "," + gps_string() + ",GSM";
+      out = wigle_cell_key + "," + cell_operator + ",GSM;" + mccmnc + "," + dt_string(get_epoch()) + "," + arfcn + "," + rssi_int + "," + gps_string() + ",GSM";
       save_cell(tower);
     } else {
       //We've seen this tower, get the full object so we can see if anything is missing
@@ -3094,19 +3091,6 @@ String parse_bside_line(String buff){
     b_working = true;
     is_5ghz = true;
   }
-  
-  return out;
-}
-
-String dt_string(){
-  //Return a datetime String using local timekeeping and GPS data.
-  time_t now = get_epoch();
-  struct tm ts;
-  char buf[80];
-
-  ts = *localtime(&now);
-  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ts);
-  String out = String(buf);
   
   return out;
 }
@@ -3243,49 +3227,52 @@ String security_int_to_string(int security_type){
 
 String get_latest_datetime(String filename, boolean date_only){
   //Provide a filename to get the highest datetime from that Wigle CSV file on the SD card.
-  Serial.print("Getting latest dt from ");
-  Serial.println(filename);
   String buff = "";
   
   File reader = SD.open(filename, FILE_READ);
-  int seekto = reader.size()-512;
-  if (seekto < 1){
-    seekto = 0;
-  }
-  reader.seek(seekto);
-  int ccount = 0;
-  while (reader.available()){
-    char c = reader.read();
-    if (c == '\n' || c == '\r'){
-      if (ccount == 10){
-        int startpos = buff.indexOf("],2");
-        int endpos = buff.indexOf(",",startpos+3);
-        if (startpos > 0 && endpos > 0){
-          String dt = buff.substring(startpos+2,endpos);
-          Serial.print("Got: ");
-          Serial.println(dt);
-          if (date_only){
-            int spacepos = dt.indexOf(" ");
-            String new_dt = dt.substring(0,spacepos);
-            dt = new_dt;
-            Serial.print("Stripped to: ");
+  time_t meta_lastwrite = reader.getLastWrite();
+  String dt = "";
+  if (meta_lastwrite > YEAR_2020){
+    dt = dt_string(meta_lastwrite);
+  } else {
+    int seekto = reader.size()-512;
+    if (seekto < 1){
+      seekto = 0;
+    }
+    reader.seek(seekto);
+    int ccount = 0;
+    while (reader.available()){
+      char c = reader.read();
+      if (c == '\n' || c == '\r'){
+        if (ccount == 10){
+          int startpos = buff.indexOf("],2");
+          int endpos = buff.indexOf(",",startpos+3);
+          if (startpos > 0 && endpos > 0){
+            dt = buff.substring(startpos+2,endpos);
+            Serial.print("Got (old method): ");
             Serial.println(dt);
-          }
-          reader.close();
-          return dt;
-        } 
-      }
-      ccount = 0;
-      buff = "";
-    } else {
-      buff.concat(c);
-      if (c == ','){
-        ccount++;
+            break;
+          } 
+        }
+        ccount = 0;
+        buff = "";
+      } else {
+        buff.concat(c);
+        if (c == ','){
+          ccount++;
+        }
       }
     }
   }
   reader.close();
-  return "";
+  if (date_only){
+    int spacepos = dt.indexOf(" ");
+    String new_dt = dt.substring(0,spacepos);
+    dt = new_dt;
+    Serial.print("Stripped to: ");
+    Serial.println(dt);
+  }
+  return dt;
 }
 
 boolean set_sys_clock(unsigned long new_epoch){

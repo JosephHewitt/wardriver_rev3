@@ -393,7 +393,7 @@ void loop() {
       }
     }
   }
-  BLEScanResults* foundDevices = pBLEScan->start(2.2, false);
+  BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
   await_serial();
   serial_lock = true;
   Serial1.print("BLC,");
@@ -410,8 +410,8 @@ void loop() {
     last_temperature = millis();
   }
   
-  //This side will only scan the primary non-overlapping channels; most scan time is dedicated to Bluetooth here.
-  for (int y = 0; y < 4; y++){
+  //This side will only scan a subset of channels defined below; most scan time is dedicated to Bluetooth here.
+  for (int y = 0; y < 6; y++){
     switch(wifi_scan_channel){
       case 1:
         wifi_scan_channel = 6;
@@ -420,6 +420,12 @@ void loop() {
         wifi_scan_channel = 11;
         break;
       case 11:
+        wifi_scan_channel = 12;
+        break;
+      case 12:
+        wifi_scan_channel = 13;
+        break;
+      case 13:
         wifi_scan_channel = 14;
         break;
       default:

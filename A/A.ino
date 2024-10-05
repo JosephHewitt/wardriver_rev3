@@ -1469,12 +1469,12 @@ void boot_config(){
   bootcount++;
   preferences.putULong("bootcount", bootcount);
 
-  String con_ssid = GP_urldecode(preferences.getString("ssid",""));
-  String con_psk = GP_urldecode(preferences.getString("psk",""));
+  String con_ssid = preferences.getString("ssid","");
+  String con_psk = preferences.getString("psk","");
   con_ssid = get_config_string("con_ssid", con_ssid);
   con_psk = get_config_string("con_psk", con_psk);
-  String fb_ssid = GP_urldecode(preferences.getString("fbssid",""));
-  String fb_psk = GP_urldecode(preferences.getString("fbpsk",""));
+  String fb_ssid = preferences.getString("fbssid","");
+  String fb_psk = preferences.getString("fbpsk","");
   fb_ssid = get_config_string("fb_ssid", fb_ssid);
   fb_psk = get_config_string("fb_psk", fb_psk);
   boolean created_network = false; //Set to true automatically when the fallback network is created.
@@ -1495,18 +1495,18 @@ void boot_config(){
     display.print("Connecting");
     display.display();
     if (con_ssid != ""){
-      WiFi.begin(con_ssid.c_str(), con_psk.c_str());
+      WiFi.begin(con_ssid, con_psk);
       
       int fcount = 0;
       while (WiFi.status() != WL_CONNECTED) {
         display.print(".");
         display.display();
-        delay(100);
+        delay(150);
         Serial.print(".");
         fcount++;
-        if (fcount > 50){
+        if (fcount > 75){
           clear_display();
-          display.println("Cannot connect to WiFi");
+          display.println("WiFi connect failed");
           display.display();
           delay(500);
           if (fb_ssid != ""){

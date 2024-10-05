@@ -76,6 +76,9 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
         ble_found++;
         if (!seen_mac(mac_bytes)){
           save_mac(mac_bytes);
+
+          String ble_name = advertisedDevice.getName().c_str();
+          ble_name.replace(",","_");
           
           await_serial();
           serial_lock = true;
@@ -85,7 +88,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
           Serial1.print(",");
           Serial1.print(advertisedDevice.getAddress().toString().c_str());
           Serial1.print(",");
-          Serial1.println(advertisedDevice.getName().c_str());
+          Serial1.println(ble_name);
           serial_lock = false;
         }
       }

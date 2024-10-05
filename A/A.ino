@@ -57,6 +57,7 @@ unsigned int disp_wifi_count;
 boolean is_5ghz = false;
 unsigned long side_b_reset_millis;
 unsigned long started_at_millis;
+unsigned long total_new_wifi = 0;
 
 uint32_t chip_id;
 
@@ -2502,6 +2503,8 @@ void primary_scan_loop(void * parameter){
           //Save the AP MAC inside the history buffer so we know it's logged.
           save_mac(this_bssid_raw);
 
+          total_new_wifi++;
+
           String ssid = WiFi.SSID(i);
           ssid.replace(",","_");
           
@@ -2574,13 +2577,15 @@ void lcd_show_stats(){
   }
   #define B_RESET_SEARCH_TIME 20000
   if (b_working && millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
-  display.print("BLE:");
+  display.print("BL:");
   display.print(ble_count);
   if (ble_did_block){
     display.print("X");
   }
   display.print(" GSM:");
-  display.println(disp_gsm_count);
+  display.print(disp_gsm_count);
+  display.print(" T:");
+  display.println(total_new_wifi);
   } else {
     if (millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
       display.println("ESP-B NO DATA");
@@ -2941,7 +2946,7 @@ String parse_bside_line(String buff){
     
       if (!seen_mac(mac_bytes)){
         save_mac(mac_bytes);
-        //Save to SD?
+        total_new_wifi++;
 
         String authtype = security_int_to_string((int) security_raw.toInt());
         

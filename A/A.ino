@@ -15,6 +15,7 @@ const String VERSION = "1.2.1";
 #include "mbedtls/sha256.h"
 #include "mbedtls/md.h"
 #include <WiFiClientSecure.h>
+#include <nvs_flash.h>
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -1301,12 +1302,18 @@ void boot_config(){
   preferences.putShort("model", DEVICE_TYPE);
   
   if (doreset){
-    Serial.println("resetting");
+    Serial.println("Will factory reset now.");
     clear_display();
     display.println("RESET");
     display.display();
     preferences.clear();
-    delay(2000);
+    preferences.end();
+    Serial.println("Resetting NVS..");
+    nvs_flash_erase();
+    delay(500);
+    nvs_flash_init();
+    delay(1000);
+    Serial.println("Rebooting..");
     ESP.restart();
   }
 
@@ -1324,12 +1331,22 @@ void boot_config(){
   }
 
   if (firstrun){
+    // Always set the reset flag on unitilized wardrivers so they will have a full NVS reset on each reboot.
+    // This fixes an issue where NVS could be corrupt preventing a wardriver from being setup without a full flash erase.
+    preferences.putBool("reset", true);
+    preferences.end();
+    delay(100);
+    preferences.begin("wardriver", false);
+
+    setup_wifi();
     Serial.println("Begin first time setup..");
     int n = WiFi.scanNetworks(false,false,false,150);
     Serial.print("Scan result is ");
     Serial.println(n);
     Serial.print("Connect to: ");
     Serial.println(default_ssid);
+    Serial.println(default_psk);
+    WiFi.mode(WIFI_AP);
     WiFi.softAP(default_ssid.c_str(), default_psk);
     IPAddress IP = WiFi.softAPIP();
     clear_display();
@@ -1337,6 +1354,7 @@ void boot_config(){
     display.println(default_ssid);
     display.println(IP);
     display.display();
+    delay(500);
     WiFiServer server(80);
     server.begin();
     boolean newline = false;
@@ -1474,6 +1492,12 @@ void boot_config(){
         
       }//client
     } //firstrun
+
+    // During firstrun: "reset" always forced to true. Set it back to false now we're done.
+    preferences.putBool("reset", false);
+    preferences.end();
+    delay(100);
+    preferences.begin("wardriver", false);
     
   }
   setup_wifi();
@@ -1522,15 +1546,19 @@ void boot_config(){
           display.display();
           delay(500);
           if (fb_ssid != ""){
+            WiFi.mode(WIFI_AP);
             WiFi.softAP(fb_ssid.c_str(), fb_psk.c_str());
             created_network = true;
+            delay(500);
           }
           break;
         }
       }
     } else {
+      WiFi.mode(WIFI_AP);
       WiFi.softAP(fb_ssid.c_str(), fb_psk.c_str());
       created_network = true;
+      delay(500);
     }
     Serial.println();
     boolean update_available = false;

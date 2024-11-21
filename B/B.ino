@@ -525,21 +525,36 @@ void loop2( void * parameter) {
           }
           if (counter == 2){
             //Security type
-            if (match.indexOf("WPA2 AES") > -1 || match.indexOf("WPA2 TKIP") > -1) {
+            if (match.indexOf("WPA2 AES") > -1 || match.indexOf("WPA2 TKIP") > -1 || match.indexOf("WPA2 PSK") > -1) {
               enc_type = WIFI_AUTH_WPA2_PSK;
             }
-            if (match.indexOf("WPA2") > -1 && enc_type == 0) {
-              enc_type = WIFI_AUTH_WPA2_ENTERPRISE;
+            if ((match.indexOf("WPA2/WPA3 PSK") > -1) && enc_type == 0) {
+              enc_type = WIFI_AUTH_WPA2_WPA3_PSK;
             }
-            if (match.indexOf("WPA") > -1 && enc_type == 0) {
-              enc_type = WIFI_AUTH_WPA_PSK;
-            }
-            if (match.indexOf("WPA3") > -1 && enc_type == 0) {
+            if ((match.indexOf("WPA3") > -1 || match.indexOf("WPA3 PSK") > -1) && enc_type == 0) {
               enc_type = WIFI_AUTH_WPA3_PSK;
             }
-            if (match.indexOf("None") > -1 && enc_type == 0) {
+            if ((match.indexOf("WPA/WPA2 PSK") > -1) && enc_type == 0) {
+              enc_type = WIFI_AUTH_WPA_WPA2_PSK;
+            }
+            if ((match.indexOf("WPA Enterprise") > -1 || match.indexOf("WPA2 Enterprise") > -1 || match.indexOf("WPA/WPA2 Enterprise") > -1) && enc_type == 0) {
+              enc_type = WIFI_AUTH_ENTERPRISE;
+            }
+            if ((match.indexOf("WPA2") > -1 || match.indexOf("WPA2 Enterprise") > -1) && enc_type == 0) {
+              enc_type = WIFI_AUTH_WPA2_ENTERPRISE;
+            }
+            if ((match.indexOf("WPA") > -1 || match.indexOf("WPA PSK") > -1) && enc_type == 0) {
+              enc_type = WIFI_AUTH_WPA_PSK;
+            }
+            if ((match.indexOf("None") > -1 || match.indexOf("Open") > -1) && enc_type == 0) {
               enc_type = WIFI_AUTH_OPEN;
             }
+            if ((match.indexOf("WEP") > -1) && enc_type == 0) {
+              enc_type = WIFI_AUTH_WEP;
+            }
+
+
+
           }
           if (counter == 3){
             //Channel

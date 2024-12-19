@@ -229,6 +229,7 @@ void setup() {
     Serial.println("Using BW16 instead of SIM800L");
   }
 
+  Serial2.setRxBufferSize(8192); //increase buffer for BW16 scan data
   Serial2.begin(baud_rate,SERIAL_8N1,16,17); //SIM800L/BW16
   delay(50);
   if (!using_bw16){

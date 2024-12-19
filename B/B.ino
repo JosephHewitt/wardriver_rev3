@@ -79,13 +79,16 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
           String ble_name = advertisedDevice.getName().c_str();
           ble_name.replace(",","_");
-          
+
+          await_serial();
+          serial_lock = true;
           Serial1.print("BL,");
           Serial1.print(advertisedDevice.getRSSI());
           Serial1.print(",");
           Serial1.print(advertisedDevice.getAddress().toString().c_str());
           Serial1.print(",");
           Serial1.println(ble_name);
+          serial_lock = false;
         }
       }
     }
@@ -394,9 +397,9 @@ void loop() {
     }
   }
 
+  BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
   await_serial();
   serial_lock = true;
-  BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
   Serial1.print("BLC,");
   Serial1.println(ble_found);
   serial_lock = false;

@@ -1,6 +1,10 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side B" of the wardriver hardware revision 3.
 
+// ** Paul Jacoby - MODIFIED 11/09/2025 to add a preference for 'scanBLE' or not
+// * If BLE is disabled, scan all 14 wifi channels with the B-side EPS32
+// * If BLE is enabled, scan only the regular subset of 6 channels
+
 //Serial = PC, 115200
 //Serial1 = ESP32 (side A), 115200
 //Serial2 = SIM800L module, 9600
@@ -32,6 +36,14 @@ boolean ota_mode = false; //Set to true automatically when doing OTA update
 String ota_hash = ""; //SHA256 of the OTA update, set automatically.
 
 boolean using_bw16 = false; //Set when advanced config is sb_bw16=yes https://wardriver.uk/advanced_config
+
+// The WiFi channels to scan with the B-side ESP32
+// This is in prioritized order should we also be scanning Bluetooth, we will only scan the first 6 entries
+int channel_list[14] = { 6, 11, 12, 13, 14, 1, 2, 3, 4, 5, 7, 8, 9, 10 };
+int channel_max = 6;
+
+// * BLUETOOTH on or off? *
+boolean scanBLE = false; // Do we want to scan BLUETOOTH?  Should put this in the config file
 
 #define mac_history_len 1024
 
@@ -267,6 +279,8 @@ void setup() {
   Serial1.print("RESET=");
   Serial1.println(reset_reason);
 
+  // * BLUETOOTH setup if our PREFERENCE is ENABLED *
+  if (scanBLE) {
   Serial.println("Setting up Bluetooth scanning");
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan(); //create new scan
@@ -274,7 +288,7 @@ void setup() {
   pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(50);  // less or equal setInterval value
-
+  }
 
   Serial.println("Setting up multithreading");
   xTaskCreatePinnedToCore(
@@ -395,8 +409,10 @@ void loop() {
         
       }
     }
-  }
+  }  // end of OTA section
 
+  // * Scanning BLUETOOTH only if preference is ENABLED *
+  if (scanBLE) {
   BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
   await_serial();
   serial_lock = true;
@@ -409,33 +425,49 @@ void loop() {
   pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
   yield();
   ble_found = 0;
+  }
+  // * BLUETOOTH scan
+
+  // Update temperature
   if (last_temperature == 0 || millis() - last_temperature > 15000){
     read_temperature();
     request_temperature();
     last_temperature = millis();
   }
-  
+
+  // * IF Bluetooth is OFF then we can scan all channels here *
+  if (scanBLE) {  // if we are scanning BLUETOOTH, then only scan 6 primary channels
+    channel_max = 6;
+  } else
+  {
+    channel_max = 14;  // if we aren't scanning Bluetooth, scan all 14
+  }
+
   //This side will only scan a subset of channels defined below; most scan time is dedicated to Bluetooth here.
-  for (int y = 0; y < 6; y++){
-    switch(wifi_scan_channel){
-      case 1:
-        wifi_scan_channel = 6;
-        break;
-      case 6:
-        wifi_scan_channel = 11;
-        break;
-      case 11:
-        wifi_scan_channel = 12;
-        break;
-      case 12:
-        wifi_scan_channel = 13;
-        break;
-      case 13:
-        wifi_scan_channel = 14;
-        break;
-      default:
-        wifi_scan_channel = 1;
-    }
+  //  for (int y = 0; y < 6; y++){
+  //   switch(wifi_scan_channel){
+  //     case 1:
+  //      wifi_scan_channel = 6;
+  //      break;
+  //    case 6:
+  //      wifi_scan_channel = 11;
+  //      break;
+  //    case 11:
+  //      wifi_scan_channel = 12;
+  //      break;
+  //    case 12:
+  //      wifi_scan_channel = 13;
+  //      break;
+  //    case 13:
+  //      wifi_scan_channel = 14;
+  //      break;
+  //    default:
+  //      wifi_scan_channel = 1;
+  //  }
+
+    // Get the channel to scan from the array
+  for (int y = 0; y < channel_max; y++) {  // scan the channels from the array
+    wifi_scan_channel = channel_list[y];
   
     //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
     int n = WiFi.scanNetworks(false,true,false,110,wifi_scan_channel);
@@ -685,4 +717,3 @@ byte read_id_pins(){
 
   return board_id;
 }
-

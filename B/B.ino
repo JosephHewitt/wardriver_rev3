@@ -43,7 +43,7 @@ int channel_list[14] = { 6, 11, 12, 13, 14, 1, 2, 3, 4, 5, 7, 8, 9, 10 };
 int channel_max = 6;
 
 // * BLUETOOTH on or off? *
-boolean scanBLE = false; // Do we want to scan BLUETOOTH?  Should put this in the config file
+boolean scanBLE = true; // Do we want to scan BLUETOOTH?  Default to TRUE/YES
 
 #define mac_history_len 1024
 
@@ -204,6 +204,10 @@ void setup() {
     //Lets make this a bit nicer in the future.
     if (buff.indexOf("sb_bw16=yes") > -1){
       using_bw16 = true;
+    }
+    // BlueTooth scan preference
+    if (buff.indexOf("scanble=no") > -1){
+      scanBLE = false;
     }
   }
 

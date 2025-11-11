@@ -1,10 +1,6 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side B" of the wardriver hardware revision 3.
 
-// ** Paul Jacoby - MODIFIED 11/09/2025 to add a preference for 'scanBLE' or not
-// * If BLE is disabled, scan all 14 wifi channels with the B-side EPS32
-// * If BLE is enabled, scan only the regular subset of 6 channels
-
 //Serial = PC, 115200
 //Serial1 = ESP32 (side A), 115200
 //Serial2 = SIM800L module, 9600
@@ -42,7 +38,8 @@ boolean using_bw16 = false; //Set when advanced config is sb_bw16=yes https://wa
 int channel_list[14] = { 6, 11, 12, 13, 14, 1, 2, 3, 4, 5, 7, 8, 9, 10 };
 int channel_max = 6;
 
-// * BLUETOOTH on or off? *
+// * If BLE is disabled, scan all 14 wifi channels with the B-side EPS32
+// * If BLE is enabled, scan only the regular subset of 6 channels
 boolean scanBLE = true; // Do we want to scan BLUETOOTH?  Default to TRUE/YES
 
 #define mac_history_len 1024

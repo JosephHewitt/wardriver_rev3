@@ -8,6 +8,7 @@ This repository is for the 3rd revision of the wardriver.uk created by [Joseph H
 The main code is split up into 2 separate files (A and B) for the 2 different ESP32 boards within the Wardriver.
 
 For information about the Wardriver hardware, please see [the official wiki](https://wardriver.uk)
+There are a variety of advanced configuration options that can be set in a "cfg.txt" file on your SD card - see [Advanced Config](https://wardriver.uk/advanced_config) on the Wiki
 
 ## Repository Version
 

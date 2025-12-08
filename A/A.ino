@@ -166,7 +166,8 @@ String ota_hostname = "ota.wardriver.uk";
 unsigned long auto_reset_ms = 0;
 float force_lat = 0;
 float force_lon = 0;
-boolean sb_bw16 = false; 
+boolean sb_bw16 = false;
+boolean scanble = true;  // Bluetooth scan preference
 
 #define MAX_AUTO_RESET_MS 1814400000
 #define MIN_AUTO_RESET_MS 7200000
@@ -1259,6 +1260,8 @@ void boot_config(){
   force_lat = get_config_float("force_lat", force_lat);
   force_lon = get_config_float("force_lon", force_lon);
   sb_bw16 = get_config_bool("sb_bw16", sb_bw16);
+// BlueTooth scan preference
+  scanble = get_config_bool("scanble", scanble);
 
   if (auto_reset_ms != 0){
     if (auto_reset_ms > MAX_AUTO_RESET_MS){
@@ -2259,6 +2262,8 @@ void send_config_to_b(){
   //This should contain a bunch of push_config(xx) options.
   Serial.println("Sending config options to B..");
   push_config("sb_bw16");
+  // BlueTooth scan preference
+  push_config("scanble");
 }
 
 void setup() {

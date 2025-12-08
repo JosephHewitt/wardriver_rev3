@@ -9,6 +9,8 @@ The main code is split up into 2 separate files (A and B) for the 2 different ES
 
 For information about the Wardriver hardware, please see [the official wiki](https://wardriver.uk)
 
+There are a variety of advanced configuration options that can be set in a "cfg.txt" file on your SD card - see [Advanced Config](https://wardriver.uk/advanced_config) on the Wiki
+
 ## Repository Version
 
 The `main` branch of this project is the testing/alpha branch; you should only use it if you are contributing code or want to help debug the latest features. Please use the `Releases` tab on the right to download stable versions.

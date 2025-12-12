@@ -168,6 +168,7 @@ float force_lat = 0;
 float force_lon = 0;
 boolean sb_bw16 = false;
 boolean scanble = true;  // Bluetooth scan preference
+boolean tempunits_c = true; // Temperature in Celsius by default, Fahrenheit if False
 
 #define MAX_AUTO_RESET_MS 1814400000
 #define MIN_AUTO_RESET_MS 7200000
@@ -1262,6 +1263,7 @@ void boot_config(){
   sb_bw16 = get_config_bool("sb_bw16", sb_bw16);
 // BlueTooth scan preference
   scanble = get_config_bool("scanble", scanble);
+  tempunits_c = get_config_bool("tempunits_c", tempunits_c); // temperature in C or F
 
   if (auto_reset_ms != 0){
     if (auto_reset_ms > MAX_AUTO_RESET_MS){
@@ -2610,10 +2612,16 @@ void lcd_show_stats(){
     display.print("|");
     display.print(count_5ghz);
   }
-  if (int(temperature) != 0){
+  if (int(temperature) != 0) {
     display.print(" T:");
-    display.print(temperature);
-    display.print("c");
+    if (!tempunits_c) {   // if units are NOT Celsius, convert to Fahrenheit
+      float temperatureF = (temperature * 9.0 / 5.0) + 32.0;
+      display.print(temperatureF);
+      display.print("f");
+    } else {
+      display.print(temperature);
+      display.print("c");
+    }
   }
   display.println();
   if (nmea.getHDOP() < 250 && nmea.getNumSatellites() > 0){

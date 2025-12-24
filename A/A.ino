@@ -2642,7 +2642,11 @@ void lcd_show_stats(){
   #define B_RESET_SEARCH_TIME 20000
   if (b_working && millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
   display.print("BL:");
-  display.print(ble_count);
+  if (scanble) {
+    display.print(ble_count);
+    } else {
+    display.print("OFF"); // visual clue that BlueTooth scanning is OFF
+  }
   if (ble_did_block){
     display.print("X");
   }

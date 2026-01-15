@@ -18,18 +18,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      
-      - name: Preparation
-        run: |
-          BOARDS_HASH=$(shasum boards.txt | cut -d " " -f 1)
-          LIBRARIES_HASH=$(shasum libraries.txt | cut -d " " -f 1)
-          echo "cachehash=$BOARDS_HASH$LIBRARIES_HASH" >> $GITHUB_ENV
-      
+
       - name: Cache
         if: github.ref_type != 'tag'
         uses: actions/cache@v3
         with:
-          key: "BUILDER_DIR-${{ env.cachehash }}"
+          key: "BUILDER_DIR-${{ hashFiles('.github/*', 'boards.txt', 'libraries.txt') }}"
           path: |
             ~/builder/
 
@@ -76,7 +70,7 @@ jobs:
           cp $BOOTAPP .
           
           find . -type f -not -path '*/.*' -exec sha256sum {} \; | tee hashes.txt
-          
+
           zip -r /tmp/build.zip . -x *git* -x *arduino15* -x *github* -x arduino-cli
           
       - name: Report
@@ -93,11 +87,11 @@ jobs:
           
           
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Binaries
+          name: build
           path: |
-            /tmp/build.zip
+            ${{ github.workspace }}
             
       - name: Upload binaries to release
         if: github.ref_type == 'tag'

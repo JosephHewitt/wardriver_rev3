@@ -172,9 +172,7 @@ void setup() {
   delay(5000);
   int reset_reason = esp_reset_reason();
   Serial.begin(115200); //PC, if connected.
-  Serial.print("Starting (Side B): ");
-  Serial.print(VERSION);
-  Serial.print(", build: ");
+  Serial.print("Starting (Side B) build ");
   Serial.println(BUILD);
   
   Serial1.begin(115200,SERIAL_8N1,27,14); //ESP A, pins 27/14

@@ -1416,9 +1416,9 @@ void boot_config(){
                 client.print("<a href=\"/wifi?ssid=&psk=\">Continue without network</a>");
                 client.print("<br><hr>Additional help is available at https://wardriver.uk<br>v");
                 client.print(VERSION);
-                if (!build.startsWith("[")){
-                  ret.concat(" / ");
-                  ret.concat(BUILD);
+                if (!BUILD.startsWith("[")){
+                  client.print(" / ");
+                  client.print(BUILD);
                 }
                 client.print("<br><p>*Please see https://wardriver.uk/ota for more information about the OTA update function. Disabling it is not recommended.</p>");
               }
@@ -3777,7 +3777,7 @@ String generate_user_agent(){
   ret.concat(device_type_string());
   ret.concat(" / ");
   ret.concat(VERSION);
-  if (!build.startsWith("[")){
+  if (!BUILD.startsWith("[")){
     ret.concat(" - ");
     ret.concat(BUILD);
   }

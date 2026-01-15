@@ -36,9 +36,8 @@ jobs:
           find . -type f -name "*.ino" > /tmp/tobuild.txt
 
           B_REF_TYPE=${GITHUB_REF_TYPE:0:1}
-          B_RID=${GITHUB_RUN_ID:0:7}
           B_SHA=${GITHUB_SHA:0:7}
-          WARDRIVER_BUILD_ID="$B_REF_TYPE$B_RID$B_SHA"
+          WARDRIVER_BUILD_ID="$GITHUB_RUN_ID$B_SHA$B_REF_TYPE"
           
           mkdir -p ~/builder/
           

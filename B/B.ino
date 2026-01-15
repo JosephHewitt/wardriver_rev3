@@ -22,6 +22,9 @@
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+//The pipeline will dynamically replace this value. If you are self-compiling, it is safe to leave it unchanged.
+const String BUILD = "[CI_BUILD_HERE]";
+
 #include <OneWire.h>
 OneWire  ds(22); //DS18B20 data pin is 22.
 byte addr[8]; //The DS18B20 address
@@ -169,12 +172,18 @@ void setup() {
   delay(5000);
   int reset_reason = esp_reset_reason();
   Serial.begin(115200); //PC, if connected.
-  Serial.println("Starting");
+  Serial.print("Starting (Side B): ");
+  Serial.print(VERSION);
+  Serial.print(", build: ");
+  Serial.println(BUILD);
   
   Serial1.begin(115200,SERIAL_8N1,27,14); //ESP A, pins 27/14
   Serial1.println("REV3!");
   Serial1.print("RESET=");
   Serial1.println(reset_reason);
+  Serial1.print("BUILD=");
+  Serial1.println(BUILD);
+  Serial1.flush();
 
   setup_id_pins();
   byte board_id = read_id_pins();

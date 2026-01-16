@@ -34,6 +34,10 @@ jobs:
           export ARDUINO_DIRECTORIES_DOWNLOADS=~/builder/staging/
           export ARDUINO_DIRECTORIES_USER=~/builder/user/
           find . -type f -name "*.ino" > /tmp/tobuild.txt
+
+          B_REF_TYPE=${GITHUB_REF_TYPE:0:1}
+          B_SHA=${GITHUB_SHA:0:7}
+          WARDRIVER_BUILD_ID="$GITHUB_RUN_ID$B_SHA$B_REF_TYPE"
           
           mkdir -p ~/builder/
           
@@ -61,11 +65,14 @@ jobs:
             echo "### Compilation of $p" >> /tmp/build.log;
             echo -en "\n\n<pre>" >> /tmp/build.log;
             echo "Compile: $p";
+            sed -i -e "s/\[CI_BUILD_HERE\]/$WARDRIVER_BUILD_ID/g" "$p"
             bin/arduino-cli compile --clean --no-color --board-options PartitionScheme=min_spiffs --fqbn=esp32:esp32:esp32 -e "$p" 2>&1 | tee -a /tmp/build.log;
             echo -en "</pre>\n\n" >> /tmp/build.log;
           done </tmp/tobuild.txt
           BOOTAPP=$(find ~/builder/ -name boot_app0.bin)
           echo "Found boot_app0.bin at $BOOTAPP"
+
+          echo "Completed build $WARDRIVER_BUILD_ID" >> /tmp/build.log
           
           cp $BOOTAPP .
           

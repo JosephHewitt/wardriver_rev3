@@ -25,6 +25,9 @@ const String VERSION = "1.3.0b1";
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+//The pipeline will dynamically replace this value. If you are self-compiling, it is safe to leave it unchanged.
+const String BUILD = "[CI_BUILD_HERE]";
+
 //The stack size is insufficient for the OTA hashing calls. This is 10K, instead of the default 8K.
 SET_LOOP_TASK_STACK_SIZE(10240);
 
@@ -1413,6 +1416,10 @@ void boot_config(){
                 client.print("<a href=\"/wifi?ssid=&psk=\">Continue without network</a>");
                 client.print("<br><hr>Additional help is available at https://wardriver.uk<br>v");
                 client.print(VERSION);
+                if (!BUILD.startsWith("[")){
+                  client.print(" / ");
+                  client.print(BUILD);
+                }
                 client.print("<br><p>*Please see https://wardriver.uk/ota for more information about the OTA update function. Disabling it is not recommended.</p>");
               }
 
@@ -2274,7 +2281,9 @@ void setup() {
     
     Serial.begin(115200);
     Serial.print("Starting v");
-    Serial.println(VERSION);
+    Serial.print(VERSION);
+    Serial.print(", build: ");
+    Serial.println(BUILD);
 
     for(int i=0; i<17; i=i+8) {
       chip_id |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
@@ -3768,6 +3777,10 @@ String generate_user_agent(){
   ret.concat(device_type_string());
   ret.concat(" / ");
   ret.concat(VERSION);
+  if (!BUILD.startsWith("[")){
+    ret.concat(" - ");
+    ret.concat(BUILD);
+  }
   return ret;
 }
 

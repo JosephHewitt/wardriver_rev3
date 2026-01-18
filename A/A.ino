@@ -1549,7 +1549,8 @@ void boot_config(){
   if (con_ssid != "" || fb_ssid != ""){
     Serial.print("Attempting to connect to WiFi");
     clear_display();
-    display.print("Connecting");
+    display.print("Connecting to:");
+    display.print(con_ssid);   // show the WiFi network name
     display.display();
     if (con_ssid != ""){
       WiFi.begin(con_ssid, con_psk);

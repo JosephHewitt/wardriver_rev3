@@ -928,16 +928,16 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     uint8_t binbuf[binbuflen] = { 0x00 };
   
     Update.begin(binreader.size());
-    int counter = 0;
+    int i = 0;
     
     while (binreader.available()) {
-      byte c = binreader.read();
-      binbuf[counter] = c;
-      counter++;
-      if (counter == binbuflen){
-        Update.write(binbuf,counter);
-        counter = 0;
-        memset(binbuf, 'f', binbuflen);
+      int bytes_read = binreader.read(binbuf, binbuflen);
+      if (bytes_read > 0){
+        Update.write(binbuf, bytes_read);
+        i++;
+      }
+      if (i == 80){
+        i = 0;
         clear_display();
         display.print("Installing: ");
         float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
@@ -949,9 +949,6 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       
     }
     
-    if (counter != 0){
-      Update.write(binbuf,counter);
-    }
     Update.end(true);
 
     binreader.close();

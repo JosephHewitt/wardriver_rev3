@@ -25,6 +25,9 @@ const String VERSION = "1.3.0b1";
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+#define SD_CS 5 //SD card CS pin.
+#define SPI_FREQ 10000000
+
 //The pipeline will dynamically replace this value. If you are self-compiling, it is safe to leave it unchanged.
 const String BUILD = "[CI_BUILD_HERE]";
 
@@ -778,11 +781,14 @@ float get_config_float(String key, int def=0){
   return res.toFloat();
 }
 
-String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wardriver busy"){
+String file_hash(String filename, boolean update_lcd=false, String lcd_prompt="Wardriver busy"){
+  //Updating the LCD is VERY slow compared to the hashing logic. Don't set update_lcd unless the file is huge.
+  //LCD will update every 120KB of data read, so it's basically useless on files under ~240KB
+
   File reader = SD.open(filename, FILE_READ);
   //Setup a hash context, and somewhere to keep the output.
   unsigned char genhash[32];
-  byte bbuf[2] = {0x00, 0x00};
+  static byte bbuf[4096];
   mbedtls_sha256_context ctx;
   mbedtls_sha256_init(&ctx);
   mbedtls_sha256_starts(&ctx, 0);
@@ -790,13 +796,16 @@ String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wa
   int i = 0;
 
   while (reader.available()){
-    byte c = reader.read();
-    bbuf[0] = c;
-    mbedtls_sha256_update(&ctx, bbuf, 1);
-    i++;
-    if (i > 50000){
-      i = 0;
-      if (update_lcd){
+    int bytes_read = reader.read(bbuf, sizeof(bbuf));
+    if (bytes_read > 0){
+      //if it's <=0, then we read everything and the loop should break.
+      //We'll let .available() handle the loop break however.
+      mbedtls_sha256_update(&ctx, bbuf, bytes_read);
+    }
+    if (update_lcd){
+      i++;
+      if (i > 30 || i == 0){
+        i = 1;
         clear_display();
         display.println(lcd_prompt);
         float percent = ((float)reader.position() / (float)reader.size()) * 100;
@@ -805,7 +814,6 @@ String file_hash(String filename, boolean update_lcd=true, String lcd_prompt="Wa
         display.display();
       }
     }
-    
   }
   mbedtls_sha256_finish(&ctx, genhash);
   reader.close();
@@ -2331,7 +2339,7 @@ void setup() {
 
     setup_id_pins();
   
-    if(!SD.begin()){
+    if(!SD.begin(SD_CS, SPI, SPI_FREQ)){
         Serial.println("SD Begin failed!");
         clear_display();
         display.println("SD Begin failed!");

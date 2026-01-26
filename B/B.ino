@@ -13,6 +13,10 @@
 #include "mbedtls/sha256.h"
 #include "mbedtls/md.h"
 
+//Logging library and log tags:
+#include "esp_log.h"
+static const char* LOG_TAG_GENERIC = "wdGeneric";
+
 //LCD stuff. Side B does not normally have an LCD but this allows us to print an error if you flash the firmware onto the wrong ESP32.
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -70,7 +74,7 @@ BLEScan* pBLEScan;
 
 void await_serial(){
   while(serial_lock){
-    Serial.println("await");
+    ESP_LOGV(LOG_TAG_GENERIC, "Await serial lock");
     delay(1);
   }
 }
@@ -112,7 +116,7 @@ void request_temperature(){
   if (!temperature_sensor_ok){
     return;
   }
-  Serial.println("Requesting temperature");
+  ESP_LOGD(LOG_TAG_GENERIC, "Requesting temperature");
   ds.reset();
   ds.select(addr);
   ds.write(0x44, 1);
@@ -143,8 +147,7 @@ void read_temperature(){
   
   float celsius = (float)raw / 16.0;
   
-  Serial.print("Temperature = ");
-  Serial.println(celsius);
+  ESP_LOGD(LOG_TAG_GENERIC, "Temperature is %f", celsius);
   await_serial();
   serial_lock = true;
   Serial1.print("TEMP,");
@@ -172,8 +175,7 @@ void setup() {
   delay(5000);
   int reset_reason = esp_reset_reason();
   Serial.begin(115200); //PC, if connected.
-  Serial.print("Starting (Side B) build ");
-  Serial.println(BUILD);
+  ESP_LOGI(LOG_TAG_GENERIC, "Starting Side B build %s", BUILD.c_str());
   
   Serial1.begin(115200,SERIAL_8N1,27,14); //ESP A, pins 27/14
   Serial1.println("REV3!");
@@ -194,13 +196,12 @@ void setup() {
       break;                // to rely on config files for all parameters
   }
 
-  Serial.println("Waiting for config vars");
+  ESP_LOGD(LOG_TAG_GENERIC, "Await config vars from side A");
   Serial1.println("SEND_CONF");
   Serial1.flush();
   while (millis() < 11000){
     String buff = Serial1.readStringUntil('\n');
-    Serial.print("IN:");
-    Serial.println(buff);
+    ESP_LOGV(LOG_TAG_GENERIC, "Got %s", buff.c_str());
     if (!buff.startsWith("PUSH:")){
       continue;
     }
@@ -217,8 +218,7 @@ void setup() {
 
   int sensor_attempts = 0;
   while ( !ds.search(addr)) {
-    Serial.println("No more addresses.");
-    Serial.println();
+    ESP_LOGV(LOG_TAG_GENERIC, "No more DS* addresses");
     ds.reset_search();
     delay(250);
     sensor_attempts++;
@@ -229,34 +229,29 @@ void setup() {
   }
 
   if (temperature_sensor_ok){
-    Serial.print("DS18B20 detected with ID =");
-    for(int i = 0; i < 8; i++) {
-      Serial.write(' ');
-      Serial.print(addr[i], HEX);
-    }
-  
-    Serial.println();
+    ESP_LOGD(LOG_TAG_GENERIC, "Found temperature sensor with ID %s", addr);
+
     if (OneWire::crc8(addr, 7) != addr[7]) {
-        Serial.println("DS18B20 CRC is not valid!");
+        ESP_LOGW(LOG_TAG_GENERIC, "Temperature sensor CRC8 error");
         temperature_sensor_ok = false;
     }
   
     request_temperature();
   } else {
-    Serial.println("Unable to detect DS18B20 temperature sensor!");
+    ESP_LOGW(LOG_TAG_GENERIC, "Failed to detect temperature sensor");
   }
 
   int baud_rate = 9600;
   if (using_bw16){
     baud_rate = 38400;
-    Serial.println("Using BW16 instead of SIM800L");
+    ESP_LOGI(LOG_TAG_GENERIC, "Using BW16 instead of SIM800L");
   }
 
   Serial2.setRxBufferSize(8192); //increase buffer for BW16 scan data
   Serial2.begin(baud_rate,SERIAL_8N1,16,17); //SIM800L/BW16
   delay(50);
   if (!using_bw16){
-    Serial.println("Requesting data from SIM");
+    ESP_LOGD(LOG_TAG_GENERIC, "Requesting data from SIM");
     Serial2.print("AT+CNETSCAN=1\r\n");
     Serial2.flush();
     int i = 0;
@@ -264,22 +259,20 @@ void setup() {
     while (i < 2000){
       if (Serial2.available()){
         char c = Serial2.read();
-        Serial.write(c);
         response = true;
       } else {
         delay(1);
       }
       i++;
     }
-    Serial.println();
   
     if (!response){
-      Serial.println("SIM800L did not respond.");
+      ESP_LOGW(LOG_TAG_GENERIC, "SIM800L did not respond, will retry");
       delay(3000);
       Serial2.print("AT+CNETSCAN=1\r\n");
     }
   } else {
-    Serial.println("Waking BW16");
+    ESP_LOGD(LOG_TAG_GENERIC, "Waking BW16");
     Serial2.print("AT\r\n");
     Serial2.flush();
   }
@@ -289,16 +282,16 @@ void setup() {
 
   // * BLUETOOTH setup if our PREFERENCE is ENABLED *
   if (scanBLE) {
-  Serial.println("Setting up Bluetooth scanning");
-  BLEDevice::init("");
-  pBLEScan = BLEDevice::getScan(); //create new scan
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
-  pBLEScan->setInterval(100);
-  pBLEScan->setWindow(50);  // less or equal setInterval value
+    ESP_LOGD(LOG_TAG_GENERIC, "Setting up Bluetooth scanning");
+    BLEDevice::init("");
+    pBLEScan = BLEDevice::getScan(); //create new scan
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(50);  // less or equal setInterval value
   }
 
-  Serial.println("Setting up multithreading");
+  ESP_LOGD(LOG_TAG_GENERIC, "Setting up loop2 task");
   xTaskCreatePinnedToCore(
       loop2, /* Function to implement the task */
       "loop2", /* Name of the task */
@@ -308,7 +301,7 @@ void setup() {
       &loop2handle,  /* Task handle. */
       0); /* Core where the task should run */
 
-  Serial.println("Started");
+  
   Serial1.println("REV3!");
   if (!temperature_sensor_ok){
     //If there's no temperature sensor, attempt to put a warning on the LCD.
@@ -316,7 +309,9 @@ void setup() {
     //The display.begin() line kills the DS18B20 communication (bug), hence why we check for the sensor.
     //Side A does not have a DS18B20, so if we detect one then we clearly aren't running on A and the warning isn't needed.
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
-        Serial.println(F("SSD1306 allocation failed (this is completely okay)"));
+      ESP_LOGV(LOG_TAG_GENERIC, "Failed to initialize LCD (this is ok on side B, since there is no LCD)");
+    } else {
+      ESP_LOGE(LOG_TAG_GENERIC, "Side B code is currently running, but it seems we are running on Side A hardware! Check the build instructions at wardriver.uk");
     }
     display.setRotation(2);
     display.clearDisplay();
@@ -328,6 +323,8 @@ void setup() {
     display.println("Check documentation @ wardriver.uk");
     display.display();
   }
+
+  ESP_LOGI(LOG_TAG_GENERIC, "Boot complete");
 }
 
 unsigned long last_sim_request;
@@ -337,7 +334,7 @@ void loop() {
   if (ota_mode){
     boolean preamble_started = false;
     boolean binary_started = false;
-    Serial.println("Core1 OTA");
+    ESP_LOGD(LOG_TAG_GENERIC, "loop() task in OTA mode");
     Serial1.println(ota_hash);
     Serial1.flush();
     Update.begin(UPDATE_SIZE_UNKNOWN);
@@ -360,14 +357,14 @@ void loop() {
           //Do a flush on the first byte of the preamble, just in case. A side does too.
           if (!preamble_started){
             Serial1.flush();
-            Serial.println("OTA preamble");
+            ESP_LOGV(LOG_TAG_GENERIC, "OTA preamble start");
           }
           preamble_started = true;
         }
         //0xE9 is the magic, but we won't use it. Maybe one day.
         if (c != 0xFF && preamble_started){
           if (!binary_started){
-            Serial.println("OTA preamble end");
+            ESP_LOGV(LOG_TAG_GENERIC, "OTA preamble end");
             Serial.flush();
           }
           binary_started = true;
@@ -389,7 +386,7 @@ void loop() {
       }
       
       if (millis() - fw_last_byte > 4000){
-        Serial.println("Upload complete");
+         ESP_LOGD(LOG_TAG_GENERIC, "Upload complete");
         if (counter > 0){
           Update.write(binbuf,counter);
           mbedtls_sha256_update(&ctx, binbuf, counter);
@@ -398,7 +395,7 @@ void loop() {
         String actual_hash = hex_str(genhash, sizeof genhash);
         if (actual_hash == ota_hash){
           Update.end(true);
-          Serial.println("Update OK and verified");
+          ESP_LOGI(LOG_TAG_GENERIC, "Update OK and verified");
           Serial.flush();
           Serial1.println(actual_hash);
           delay(500);
@@ -407,9 +404,7 @@ void loop() {
           delay(500);
           ESP.restart();
         } else {
-          Serial.println("HASH MISMATCH:");
-          Serial.println(actual_hash);
-          Serial.println(ota_hash);
+          ESP_LOGW(LOG_TAG_GENERIC, "Hash mismatch: %s vs %s", actual_hash.c_str(), ota_hash.c_str());
           Update.abort();
           Serial1.println("FAILURE");
           ESP.restart();
@@ -421,18 +416,16 @@ void loop() {
 
   // * Scanning BLUETOOTH only if preference is ENABLED *
   if (scanBLE) {
-  BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
-  await_serial();
-  serial_lock = true;
-  Serial1.print("BLC,");
-  Serial1.println(ble_found);
-  serial_lock = false;
-  Serial.print("Devices found: ");
-  Serial.println(ble_found);
-  Serial.println("Scan done!");
-  pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
-  yield();
-  ble_found = 0;
+    BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
+    await_serial();
+    serial_lock = true;
+    Serial1.print("BLC,");
+    Serial1.println(ble_found);
+    serial_lock = false;
+    ESP_LOGV(LOG_TAG_GENERIC, "Found %i BLE devices", ble_found);
+    pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+    yield();
+    ble_found = 0;
   }
   // * BLUETOOTH scan
 
@@ -446,43 +439,18 @@ void loop() {
   // * IF Bluetooth is OFF then we can scan all channels here *
   if (scanBLE) {  // if we are scanning BLUETOOTH, then only scan 6 primary channels
     channel_max = 6;
-  } else
-  {
+  } else {
     channel_max = 14;  // if we aren't scanning Bluetooth, scan all 14
   }
 
-  //This side will only scan a subset of channels defined below; most scan time is dedicated to Bluetooth here.
-  //  for (int y = 0; y < 6; y++){
-  //   switch(wifi_scan_channel){
-  //     case 1:
-  //      wifi_scan_channel = 6;
-  //      break;
-  //    case 6:
-  //      wifi_scan_channel = 11;
-  //      break;
-  //    case 11:
-  //      wifi_scan_channel = 12;
-  //      break;
-  //    case 12:
-  //      wifi_scan_channel = 13;
-  //      break;
-  //    case 13:
-  //      wifi_scan_channel = 14;
-  //      break;
-  //    default:
-  //      wifi_scan_channel = 1;
-  //  }
-
-    // Get the channel to scan from the array
+  // Get the channel to scan from the array
   for (int y = 0; y < channel_max; y++) {  // scan the channels from the array
     wifi_scan_channel = channel_list[y];
   
+    ESP_LOGV(LOG_TAG_GENERIC, "Start Scan C%i", wifi_scan_channel);
     //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
     int n = WiFi.scanNetworks(false,true,false,110,wifi_scan_channel);
-    Serial.print("Scan of channel ");
-    Serial.print(wifi_scan_channel);
-    Serial.print(" returned ");
-    Serial.println(n);
+    ESP_LOGV(LOG_TAG_GENERIC, "Finish Scan C%i = %i", wifi_scan_channel, n);
     if (n > 0){
       for (int i = 0; i < n; i++) {
         uint8_t *this_bssid_raw = WiFi.BSSID(i);
@@ -515,7 +483,7 @@ void loop2( void * parameter) {
       //ESP A rarely talks to us, but it's usually important
       String a_buff = Serial1.readStringUntil('\n');
       if (a_buff.startsWith("FWUP:")){
-        Serial.println("Core2 OTA prep");
+        ESP_LOGV(LOG_TAG_GENERIC, "loop2() task OTA prep start");
         ota_hash = a_buff.substring(5);
         ota_mode = true;
         while (ota_mode){
@@ -621,7 +589,6 @@ void loop2( void * parameter) {
         
         await_serial();
         serial_lock = true;
-        Serial.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), channel, rssi, enc_type, mac.c_str());
         Serial1.printf("WI%d,%s,%d,%d,%d,%s\n", 0, ssid.c_str(), channel, rssi, enc_type, mac.c_str());
         serial_lock = false;
        }
@@ -636,8 +603,7 @@ void loop2( void * parameter) {
             Serial1.print(count_5ghz);
             Serial1.print("\n");
             serial_lock = false;
-            Serial.print("BW16 done, 5GHz count: ");
-            Serial.println(count_5ghz);
+            ESP_LOGV(LOG_TAG_GENERIC, "BW16 done, 5Ghz count: %i", count_5ghz);
             count_5ghz = 0;
           }
         }
@@ -646,10 +612,10 @@ void loop2( void * parameter) {
       if (last_sim_request == 0 || millis() - last_sim_request > 15000 || had_gsm_data == true){
         if (!using_bw16){
           Serial2.print("AT+CNETSCAN\r\n");
-          Serial.println("Requesting data from SIM");
+          ESP_LOGV(LOG_TAG_GENERIC, "Sent SIM800L CNETSCAN");
         } else {
           Serial2.print("ATWS\r\n");
-          Serial.println("Requesting data from BW16");
+          ESP_LOGV(LOG_TAG_GENERIC, "Sent BW16 ATWS");
         }
         last_sim_request = millis();
         had_gsm_data = false;

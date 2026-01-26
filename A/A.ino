@@ -501,21 +501,28 @@ boolean wigle_upload(String path){
   byte cbuf[CBUFLEN];
   
   float percent = 0;
+  float filesize = (float)filereader.size();
+  int i = 0;
   while (filereader.available()){
-    long bytes_available = filereader.available();
-    int toread = CBUFLEN;
-    if (bytes_available < CBUFLEN){
-      toread = bytes_available;
+    int bytes_read = filereader.read(cbuf, CBUFLEN);
+    if (bytes_read > 0){
+      httpsclient.write(cbuf, bytes_read);
+      ESP_LOGV(LOG_TAG_GENERIC, "Read and sent %i bytes", bytes_read);
+    } else {
+      ESP_LOGW(LOG_TAG_GENERIC, "file read returned %i during WiGLE upload", bytes_read);
+      break;
     }
-    
-    filereader.read(cbuf, toread);
-    httpsclient.write(cbuf, toread);
-    clear_display();
-    display.println("WiGLE Upload");
-    percent = ((float)filereader.position() / (float)filereader.size()) * 100;
-    display.print(percent);
-    display.println("%");
-    display.display();
+
+    if (i > 40 || i == 0){
+      i = 0;
+      clear_display();
+      display.println("WiGLE Upload");
+      percent = ((float)filereader.position() / filesize) * 100;
+      display.print(percent);
+      display.println("%");
+      display.display();
+    }
+    i++;
   }
 
   //httpsclient.write(filereader);

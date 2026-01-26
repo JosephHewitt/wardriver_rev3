@@ -17,6 +17,10 @@ const String VERSION = "1.3.0b1";
 #include <WiFiClientSecure.h>
 #include <nvs_flash.h>
 
+//Logging library and log tags:
+#include "esp_log.h"
+static const char* LOG_TAG_GENERIC = "wdGeneric";
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -289,15 +293,15 @@ void wigle_load_history(){
   wigle_history_cursor = 0;
   
   //If authorized, get file uploads from WiGLE and store their references in RAM for later.
-  Serial.println("Will check previous WiGLE uploads");
+  ESP_LOGD(LOG_TAG_GENERIC, "Will check previous WiGLE uploads");
   
   if (!SD.exists("/wigle.crt")){
-    Serial.println("No CA cert file!");
+    ESP_LOGW(LOG_TAG_GENERIC, "No WiGLE CA cert file!");
     return;
   }
 
   if (wigle_api_key.length() < 3){
-    Serial.println("Not authorized with WiGLE");
+    ESP_LOGD(LOG_TAG_GENERIC, "Not authorized with WiGLE");
     return;
   }
 
@@ -305,10 +309,10 @@ void wigle_load_history(){
   //Current root is 1940, double it in case larger certs are used in the future.
   #define ca_len 3880
   byte ca_root[ca_len];
-  Serial.println("Loading CA");
+  ESP_LOGV(LOG_TAG_GENERIC, "Load WiGLE CA");
   File careader = SD.open("/wigle.crt", FILE_READ);
   if (careader.size() > ca_len-2){
-    Serial.println("wigle.crt too large");
+    ESP_LOGW(LOG_TAG_GENERIC, "WiGLE CA too large");
     return;
   }
   careader.read(ca_root, ca_len);
@@ -324,10 +328,10 @@ void wigle_load_history(){
   httpsclient.setCACert((char*)ca_root);
 
   if (!httpsclient.connect("api.wigle.net", 443)){
-    Serial.println("Wigle API connection failed");
+    ESP_LOGW(LOG_TAG_GENERIC, "WiGLE connection failed");
     return;
   }
-  Serial.println("WIGLE OK");
+  ESP_LOGD(LOG_TAG_GENERIC, "WiGLE connection opened");
   display.println("Connected");
   display.display();
 
@@ -401,9 +405,7 @@ void wigle_load_history(){
       
     }
   }
-  Serial.print(wigle_history_cursor);
-  Serial.println(" historical uploads found");
-  Serial.println("Connection closed");
+  ESP_LOGD(LOG_TAG_GENERIC, "WiGLE connection closed, found %i uploads", wigle_history_cursor);
 }
 
 boolean wigle_upload(String path){
@@ -411,22 +413,22 @@ boolean wigle_upload(String path){
   display.println("WiGLE Upload");
   display.display();
   if (!SD.exists(path)){
-    Serial.println("Wigle upload filepath not found");
+    ESP_LOGD(LOG_TAG_GENERIC, "Wigle upload filepath not found: %s", path.c_str());
     return false;
   }
 
   if (!SD.exists("/wigle.crt")){
-    Serial.println("No CA cert file!");
+    ESP_LOGW(LOG_TAG_GENERIC, "No WiGLE CA cert file!");
     return false;
   }
   
   //Current root is 1940, double it in case larger certs are used in the future.
   #define ca_len 3880
   byte ca_root[ca_len];
-  Serial.println("Loading CA");
+  ESP_LOGV(LOG_TAG_GENERIC, "Load WiGLE CA");
   File careader = SD.open("/wigle.crt", FILE_READ);
   if (careader.size() > ca_len-2){
-    Serial.println("wigle.crt too large");
+    ESP_LOGW(LOG_TAG_GENERIC, "WiGLE CA too large");
     return false;
   }
   careader.read(ca_root, ca_len);
@@ -439,16 +441,16 @@ boolean wigle_upload(String path){
   httpsclient.setCACert((char*)ca_root);
 
   if (!httpsclient.connect("api.wigle.net", 443)){
-    Serial.println("Wigle API connection failed");
+    ESP_LOGW(LOG_TAG_GENERIC, "WiGLE connection failed");
     return false;
   }
-  Serial.println("WIGLE OK");
+  ESP_LOGD(LOG_TAG_GENERIC, "WiGLE connection opened");
   display.println("Connected");
   display.display();
   
   File filereader = SD.open(path);
 
-  Serial.println("Uploading file to Wigle");
+  ESP_LOGD(LOG_TAG_GENERIC, "Starting upload to WiGLE");
 
   String nice_filename = generate_filename(path);
 
@@ -462,12 +464,11 @@ boolean wigle_upload(String path){
   cd_header_len += 22; //Content-Type CSV
   cd_header_len += 45; //Second content-disposition line for "donate" form.
   if (wigle_commercial){
-    Serial.println("WiGLE commerical optin selected.");
+    ESP_LOGV(LOG_TAG_GENERIC, "WiGLE commercial optin selected");
     cd_header_len += 4; //"on" + \n\r
   }
   cd_header_len += 22; //New lines (doubled, because it's CR&LF)
-  Serial.print("Extra content-length bytes for CD headers: ");
-  Serial.println(cd_header_len);
+  ESP_LOGV(LOG_TAG_GENERIC, "WiGLE upload cd_header_len = %i", cd_header_len);
   
   httpsclient.println("POST /api/v2/file/upload HTTP/1.0");
   httpsclient.println("Host: api.wigle.net");
@@ -536,7 +537,7 @@ boolean wigle_upload(String path){
   httpsclient.println();
   httpsclient.flush();
 
-  Serial.println("File transfer complete");
+  ESP_LOGD(LOG_TAG_GENERIC, "Upload complete");
   clear_display();
   display.println("Transfer complete");
   display.display();
@@ -546,54 +547,52 @@ boolean wigle_upload(String path){
   while (httpsclient.connected()){
     if (httpsclient.available()){
       char c = httpsclient.read();
-      Serial.write(c);
       serverres.concat(c);
     }
     if (serverres.length() > 1024){
-      Serial.println("Aborting read, large payload");
+      ESP_LOGW(LOG_TAG_GENERIC, "Abort WiGLE read; payload too large");
       break;
     }
   }
+  ESP_LOGV(LOG_TAG_GENERIC, "serverres = %s", serverres.c_str());
 
   httpsclient.stop();
-
-  Serial.println();
-  Serial.println("WiGLE done, connection closed");
+  ESP_LOGD(LOG_TAG_GENERIC, "WiGLE connection closed");
 
   if (serverres.indexOf("\"success\":true") > -1){
-    Serial.println("Upload success confirmed");
+    ESP_LOGD(LOG_TAG_GENERIC, "WiGLE upload success confirmed");
     return true;
   }
-  Serial.println("Upload not confirmed");
+  ESP_LOGD(LOG_TAG_GENERIC, "WiGLE upload was not confirmed");
   return false;
 }
 
 String ota_get_url(String url, String write_to=""){
   if (ota_optout){
-    Serial.println("OTA optout");
+    ESP_LOGD(LOG_TAG_GENERIC, "OTA optout, refusing connection");
     return "";
   }
   clear_display();
   display.println("Contacting server");
   display.display();
 
-  Serial.print("Contacting OTA server -> ");
-  Serial.println(url);
+  ESP_LOGD(LOG_TAG_GENERIC, "OTA GET URL: %s", url.c_str());
+
   WiFiClientSecure httpsclient;
   if (use_fallback_cert){
-    Serial.println("fallback cert");
+    ESP_LOGD(LOG_TAG_GENERIC, "Use OTA fallback cert");
     httpsclient.setCACert(FALLBACK_OTA_CERT);
   } else {
-    Serial.println("primary cert");
+    ESP_LOGD(LOG_TAG_GENERIC, "Use OTA main cert");
     httpsclient.setCACert(PRIMARY_OTA_CERT);
   }
   if (!httpsclient.connect(ota_hostname.c_str(), 443)){
-    Serial.println("failed");
     if (!use_fallback_cert){
-      Serial.println("Will retry using fallback cert");
+      ESP_LOGD(LOG_TAG_GENERIC, "Failed to open OTA connection, will retry with fallback cert");
       use_fallback_cert = true;
       return ota_get_url(url);
     } else {
+      ESP_LOGW(LOG_TAG_GENERIC, "Failed to open OTA connection, giving up");
       return "";
     }
   } else {
@@ -613,11 +612,11 @@ String ota_get_url(String url, String write_to=""){
   while (httpsclient.connected()){
     String buff = httpsclient.readStringUntil('\n');
     if (!headers_ended){
-      Serial.println(buff);
+      ESP_LOGV(LOG_TAG_GENERIC, "OTA buff = %s", buff.c_str());
     }
     if (buff == "\r" || buff == "\n" || buff.length() == 0){
       headers_ended = true;
-      Serial.println("END OF HEADER^");
+      ESP_LOGV(LOG_TAG_GENERIC, "End of headers");
       if (write_to == ""){
         continue;
       }
@@ -626,8 +625,7 @@ String ota_get_url(String url, String write_to=""){
       int clpos = buff.indexOf("Content-Length: ");
       if (clpos > -1){
         String content_length = buff.substring(clpos+16);
-        Serial.print("CL:");
-        Serial.println(content_length);
+        ESP_LOGV(LOG_TAG_GENERIC, "Got OTA Content-Length of (str)%s", content_length.c_str());
         content_length_long = content_length.toInt();
       }
     }
@@ -665,14 +663,13 @@ String ota_get_url(String url, String write_to=""){
       }
     }
   }
-  Serial.println("OTA contact end");
+  ESP_LOGD(LOG_TAG_GENERIC, "End of OTA communication");
   return return_out;
 }
 
 boolean check_for_updates(boolean stable=true, boolean download_now=false){
   String res = ota_get_url("/latest.txt");
-  Serial.println("Update list res:");
-  Serial.println(res);
+  ESP_LOGV(LOG_TAG_GENERIC, "latest.txt buff = %s", res.c_str());
   
   int cur = 0;
   String partbuf = "";
@@ -685,12 +682,6 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
     char c = res.charAt(cur);
     if (c == '>' || c == '\n'){
       //Handle partbuf.
-      Serial.print("PBUF");
-      Serial.print(linecount);
-      Serial.print("/");
-      Serial.print(partcount);
-      Serial.print(":");
-      Serial.println(partbuf);
       if (partbuf == "SR"){
         reading_stable = true;
       }
@@ -728,7 +719,7 @@ boolean check_for_updates(boolean stable=true, boolean download_now=false){
               if (server_b_hash != preferences.getString("b_checksum","x")){
                 ota_get_url(partbuf, "/B.bin");
               } else {
-                Serial.println("Not downloading B, already installed (hash check)");
+                ESP_LOGD(LOG_TAG_GENERIC, "Not downloading B, already installed (hash check)");
               }
             }
           }
@@ -821,21 +812,6 @@ String file_hash(String filename, boolean update_lcd=false, String lcd_prompt="W
   return hex_str(genhash, sizeof genhash);
 }
 
-static void print_hex(const char *title, const unsigned char buf[], size_t len)
-{
-    Serial.printf("%s: ", title);
-
-    for (size_t i = 0; i < len; i++) {
-        if (buf[i] < 0xF) {
-            Serial.printf("0%x", buf[i]);
-        } else {
-            Serial.printf("%x", buf[i]);
-        }
-    }
-
-    Serial.println();
-}
-
 String html_escape(String ret){
   ret.replace("<","&lt;");
   ret.replace(">","&gt;");
@@ -852,8 +828,8 @@ String online_hash_check(String check_hash){
   url.concat(".txt");
   
   String result = ota_get_url(url);
-  Serial.println("Got OTA hash check response:");
-  Serial.println(result);
+  ESP_LOGI(LOG_TAG_GENERIC, "Got OTA hash check response: %s", result.c_str());
+  
   if (result == ""){
     return "";
   }
@@ -892,16 +868,15 @@ boolean install_firmware(String filepath, String expect_hash = "") {
   //If expect_hash is not empty, the hash will be validated first.
   
   if (!SD.exists(filepath)) {
-    Serial.print("File not found: ");
-    Serial.println(filepath);
+    ESP_LOGE(LOG_TAG_GENERIC, "Requested install of a non-existing local binary file: ", filepath.c_str());
     return false;
   }
 
-  Serial.println("Validating firmware");
+  ESP_LOGD(LOG_TAG_GENERIC, "Validating firmware");
   String actual_hash = file_hash(filepath, true, "Validating firmware");
   if (expect_hash.length() > 0) {
     if (expect_hash != actual_hash) {
-      Serial.println("Local checksum mismatch");
+      ESP_LOGE(LOG_TAG_GENERIC, "Validation failed, expecting %s but got %s", expect_hash.c_str(), actual_hash.c_str());
       return false;
     }
   }
@@ -909,10 +884,11 @@ boolean install_firmware(String filepath, String expect_hash = "") {
   if (enforce_valid_binary_checksums) {
     //At this point, make a HTTPS request to an API which can validate the .bin checksum.
     //Fail here if the checksum is a mismatch.
+    ESP_LOGD(LOG_TAG_GENERIC, "Start OTA online hash check for value %s", actual_hash.c_str());
     
     String check_result = online_hash_check(actual_hash);
     if (check_result == ""){
-      Serial.println("Strict online hash check mismatch, aborting");
+      ESP_LOGE(LOG_TAG_GENERIC, "Got no OTA result for hash %s, aborting.", actual_hash.c_str());
       return false;
     }
     
@@ -930,6 +906,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
   
     Update.begin(binreader.size());
     int i = 0;
+
+    ESP_LOGD(LOG_TAG_GENERIC, "Installing update (%i bytes)", binreader.size());
     
     while (binreader.available()) {
       int bytes_read = binreader.read(binbuf, binbuflen);
@@ -946,11 +924,13 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         display.println("%");
         display.println("DO NOT POWER OFF");
         display.display();
+        ESP_LOGV(LOG_TAG_GENERIC, "Installation at %f%%", percent);
       }
       
     }
     
     Update.end(true);
+    ESP_LOGI(LOG_TAG_GENERIC, "Installation complete, will restart");
 
     binreader.close();
   
@@ -966,7 +946,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
   }
 
   if (filepath == "/B.bin"){
-    Serial.println("Firmware update for side B");
+    ESP_LOGD(LOG_TAG_GENERIC, "Request installation of side B firmware");
     boolean update_ready = false;
     Serial1.flush();
     String b_buff = "";
@@ -976,7 +956,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     display.display();
     
     while (!update_ready){
-      Serial.println("Getting B ready");
+      ESP_LOGD(LOG_TAG_GENERIC, "Getting side B ready");
       Serial1.print("FWUP:");
       Serial1.print(actual_hash);
       Serial1.print("\n");
@@ -988,8 +968,8 @@ boolean install_firmware(String filepath, String expect_hash = "") {
           update_ready = true;
           break;
         }
-        Serial.print("Unwanted: ");
-        Serial.println(buff);
+        
+        ESP_LOGV(LOG_TAG_GENERIC, "Unwanted or unexpected side B response: %s", buff.c_str());
         buff = "";
         linecounter++;
         clear_display();
@@ -1002,8 +982,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         ready_failures++;
       }
       if (ready_failures > 99){
-        Serial.println("Unable to configure B!");
-        Serial.println("Likely B is outdated, does not support OTA, and must be updated manually");
+        ESP_LOGE(LOG_TAG_GENERIC, "Failed to get side B ready. Likely outdated and does not support OTA; please update manually");
         clear_display();
         display.println("FAILURE");
         display.println("Update B manually!");
@@ -1014,7 +993,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       }
     }
     //At this point, B side is in update mode.
-    Serial.println("B is ready");
+    ESP_LOGD(LOG_TAG_GENERIC, "Side B ready");
     
     //0xE9 is the binary header, let's spam something else to be sure we're clear of junk
     for(int i=0; i<3000; i++){
@@ -1067,6 +1046,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         display.println("%");
         display.println("DO NOT POWER OFF");
         display.display();
+        ESP_LOGV(LOG_TAG_GENERIC, "Installation at %f%%", percent);
       }
     }
     Serial1.flush();
@@ -1094,12 +1074,12 @@ boolean install_firmware(String filepath, String expect_hash = "") {
       display.println(tocounter);
       display.display();
       if (buff.indexOf(actual_hash) > -1){
-        Serial.println("Update transfer verified");
+        ESP_LOGI(LOG_TAG_GENERIC, "Side B installation completed and verified");
         transfer_success = true;
         tocounter = 0;
       }
       if (buff.indexOf("FAILURE") > -1){
-        Serial.println("B confirmed failure");
+        ESP_LOGE(LOG_TAG_GENERIC, "Side B reported installation failure: hash mismatch");
         clear_display();
         display.println("FAILURE");
         display.println("Hash mismatch");
@@ -1108,7 +1088,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         return false;
       }
       if (transfer_success == true && tocounter > 3){
-        Serial.println("Update complete");
+        ESP_LOGI(LOG_TAG_GENERIC, "Update complete");
         clear_display();
         display.println("Update complete");
         display.display();
@@ -1118,7 +1098,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         return true;
       }
       if (transfer_success == false && tocounter > 40){
-        Serial.println("Update failed");
+        ESP_LOGE(LOG_TAG_GENERIC, "Update failed");
         clear_display();
         display.println("!FAILURE!");
         display.println("Try again");
@@ -1173,13 +1153,11 @@ void wigle_upload_all(){
   long min_fileid = preferences.getLong("wigle_mf",0);
   boolean did_upload = false;
   if (min_fileid == 0){
-    Serial.println("WiGLE autoupload min fileid is 0, refusing to upload!");
+    ESP_LOGW(LOG_TAG_GENERIC, "WiGLE autoupload min fileid is 0, refusing to upload! Setting to %u", bootcount);
     preferences.putLong("wigle_mf",bootcount);
-    Serial.print("set min fileid to ");
-    Serial.println(bootcount);
     return;
   }
-  Serial.println("WiGLE automatic upload..");
+  ESP_LOGD(LOG_TAG_GENERIC, "WiGLE autoupload running");
   File dir = SD.open("/");
   while (true) {
     File entry = dir.openNextFile();
@@ -1193,8 +1171,7 @@ void wigle_upload_all(){
         filename.concat(entry.name());
       }
       if (!filename.endsWith(".csv")){
-        Serial.print("Bad filetype: ");
-        Serial.println(filename);
+        ESP_LOGV(LOG_TAG_GENERIC, "%s is not CSV", filename.c_str());
         continue;
       }
 
@@ -1205,55 +1182,47 @@ void wigle_upload_all(){
       filename_id = filename.substring(first_pos, second_pos);
       unsigned int filename_id_int = (int) filename_id.toInt();
       if (filename_id_int < min_fileid){
-        Serial.print("Skip ID ");
-        Serial.print(filename_id_int);
-        Serial.print(", less than ");
-        Serial.print(min_fileid);
-        Serial.print(" for file ");
-        Serial.println(filename);
+        ESP_LOGD(LOG_TAG_GENERIC, "Skip ID %u, less than min_fileid of %u, for file ", filename_id_int, min_fileid, filename.c_str());
         continue;
       } else {
-        Serial.print("File ID ");
-        Serial.print(filename_id_int);
-        Serial.print(" is OK, min is ");
-        Serial.println(min_fileid);
+        ESP_LOGD(LOG_TAG_GENERIC, "File ID %u is OK, min is %u", filename_id_int, min_fileid);
       }
 
       struct wigle_file wigle_file_reference = get_wigle_file(filename_id_int, entry.size());
       
-      Serial.print(filename);
-      Serial.print(" is ");
-      Serial.print(entry.size());
-      Serial.println(" bytes");
+      ESP_LOGV(LOG_TAG_GENERIC, "%s is %i bytes", filename.c_str(), entry.size());
 
       if (wigle_file_reference.fid == 0){
-        Serial.println("Not on WiGLE, will upload");
+        ESP_LOGD(LOG_TAG_GENERIC, "Not on WiGLE, will upload %s", filename.c_str());
         if (wigle_upload(filename)){
+          ESP_LOGV(LOG_TAG_GENERIC, "Set wigle_minfile to %u", filename_id_int);
           preferences.putLong("wigle_mf", filename_id_int);
           delay(2000);
           did_upload = true;
         } else {
-          Serial.println("Upload failed. Stopping auto upload now.");
+          ESP_LOGE(LOG_TAG_GENERIC, "WiGLE autoupload failed, won't attempt any more");
           return;
         }
         
       }
     }
   }
-  Serial.println("Auto upload complete.");
+  ESP_LOGI(LOG_TAG_GENERIC, "Finished WiGLE autoupload");
   if (did_upload){
+    ESP_LOGD(LOG_TAG_GENERIC, "Some files were autouploaded, will refresh local list");
     wigle_load_history();
   } else {
-    Serial.println("Found nothing to upload.");
+    ESP_LOGI(LOG_TAG_GENERIC, "Found no files to autoupload");
   }
 }
 
 void boot_config(){
   //Load configuration variables and perform first time setup if required.
-  Serial.println("Setting/loading boot config..");
+  ESP_LOGV(LOG_TAG_GENERIC, "running boot_config()");
 
   if (DEVICE_TYPE == DEVICE_CSF_MINI){
     // CoD_Segfault Mini Wardriver Rev2 always has a BW16
+    ESP_LOGV(LOG_TAG_GENERIC, "Detected CSF_MINI, sb_bw16 set to true");
     sb_bw16 = true;
   }
 
@@ -1310,25 +1279,26 @@ void boot_config(){
   }
   bootcount = preferences.getULong("bootcount", 0);
   
-  Serial.println("Loaded variables");
+  ESP_LOGD(LOG_TAG_GENERIC, "Loaded device variables");
 
   DEVICE_TYPE = preferences.getShort("model", DEVICE_UNKNOWN);
   DEVICE_TYPE = identify_model();
   preferences.putShort("model", DEVICE_TYPE);
   
   if (doreset){
-    Serial.println("Will factory reset now.");
+    ESP_LOGW(LOG_TAG_GENERIC, "Performing device factory reset now!");
     clear_display();
     display.println("RESET");
     display.display();
     preferences.clear();
     preferences.end();
-    Serial.println("Resetting NVS..");
+    ESP_LOGV(LOG_TAG_GENERIC, "Will erase nvs");
     nvs_flash_erase();
     delay(500);
+    ESP_LOGV(LOG_TAG_GENERIC, "Will init nvs");
     nvs_flash_init();
     delay(1000);
-    Serial.println("Rebooting..");
+    ESP_LOGW(LOG_TAG_GENERIC, "Rebooting now!");
     ESP.restart();
   }
 
@@ -1354,13 +1324,13 @@ void boot_config(){
     preferences.begin("wardriver", false);
 
     setup_wifi();
-    Serial.println("Begin first time setup..");
+    ESP_LOGI(LOG_TAG_GENERIC, "Performing first time setup");
+    
     int n = WiFi.scanNetworks(false,false,false,150);
-    Serial.print("Scan result is ");
-    Serial.println(n);
-    Serial.print("Connect to: ");
-    Serial.println(default_ssid);
-    Serial.println(default_psk);
+
+    ESP_LOGD(LOG_TAG_GENERIC, "Scan complete, result %i", n);
+    ESP_LOGI(LOG_TAG_GENERIC, "Connect to: %s with password %s", default_ssid.c_str(), default_psk);
+
     WiFi.mode(WIFI_AP);
     WiFi.softAP(default_ssid.c_str(), default_psk);
     IPAddress IP = WiFi.softAPIP();
@@ -1378,7 +1348,7 @@ void boot_config(){
     while (firstrun){
       WiFiClient client = server.available();
       if (client){
-        Serial.println("client connected");
+        ESP_LOGD(LOG_TAG_GENERIC, "Client connected");
         clear_display();
         display.println("Client connected");
         display.display();
@@ -1387,19 +1357,20 @@ void boot_config(){
       while (client.connected()){
         if (client.available()){
           char c = client.read();
-          Serial.write(c);
+          
           buff += c;
           if (c == '\n'){
             if (newline){
-              Serial.println("End of message");
-              Serial.println(buff);
+              ESP_LOGV(LOG_TAG_GENERIC, "Client buf = %s", buff.c_str());
+
               client.println("HTTP/1.1 200 OK");
               client.println("Content-type: text/html");
               client.println("Connection: close");
               client.println();
 
               if (buff.indexOf("GET / HTTP") > -1) {
-                Serial.println("Sending FTS homepage");
+                ESP_LOGD(LOG_TAG_GENERIC, "Send FTS page");
+
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>First time setup</h2>");
                 client.print("<p>Please provide the credentials of your WiFi network to get started.</p>");
@@ -1431,13 +1402,14 @@ void boot_config(){
               }
 
               if (buff.indexOf("GET /wifi?") > -1){
-                Serial.println("Got WiFi config");
+                ESP_LOGD(LOG_TAG_GENERIC, "Got WiFi config");
                 if (buff.indexOf("&otaoptout=otaoptout") > -1){
                   ota_optout = true;
                   //This only makes me want to switch to POST even more.
                   buff.replace("&otaoptout=otaoptout","");
                   preferences.putBool("ota_optout", true);
-                  Serial.println("OTA opt out selected");
+                  
+                  ESP_LOGV(LOG_TAG_GENERIC, "OTA opt out selected");
                 }
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
@@ -1446,17 +1418,17 @@ void boot_config(){
                 endpos = buff.indexOf(" HTTP");
                 String new_psk = GP_urldecode(buff.substring(startpos,endpos));
 
-                Serial.println(new_ssid);
                 preferences.putString("ssid", new_ssid);
-                Serial.println(new_psk);
                 preferences.putString("psk", new_psk);
+
+                ESP_LOGV(LOG_TAG_GENERIC, "New SSID and PSK: %s + %s", new_ssid.c_str(), new_psk.c_str());
 
                 client.print("<h1>Thanks!</h1>Please wait. <meta http-equiv=\"refresh\" content=\"1; URL=/step2\" />");
                 
               }
 
               if (buff.indexOf("GET /step2 HTTP") > -1){
-                Serial.println("Starting step2");
+                ESP_LOGD(LOG_TAG_GENERIC, "Starting step2");
                 client.print("<style>html{font-size:21px;text-align:center;padding:20px}input,select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
                 client.print("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1><h2>Fallback network setup</h2>");
                 client.print("If your wardriver is unable to connect to your main network it will create a network which your device can join. Please provide some credentials for this fallback network.<br>");
@@ -1467,7 +1439,7 @@ void boot_config(){
               }
 
               if (buff.indexOf("GET /fbwifi?") > -1){
-                Serial.println("Got WiFi (fallback) config");
+                ESP_LOGV(LOG_TAG_GENERIC, "Got Wifi fallback config");
                 int startpos = buff.indexOf("?ssid=")+6;
                 int endpos = buff.indexOf("&");
                 String new_ssid = GP_urldecode(buff.substring(startpos,endpos));
@@ -1475,15 +1447,15 @@ void boot_config(){
                 endpos = buff.indexOf(" HTTP");
                 String new_psk = GP_urldecode(buff.substring(startpos,endpos));
 
-                Serial.println(new_ssid);
                 preferences.putString("fbssid", new_ssid);
-                Serial.println(new_psk);
                 preferences.putString("fbpsk", new_psk);
+
+                ESP_LOGV(LOG_TAG_GENERIC, "New SSID and PSK: %s + %s", new_ssid.c_str(), new_psk.c_str());
                 client.print("<h1>Thanks!</h1>Your wardriver is now getting ready. <meta http-equiv=\"refresh\" content=\"1; URL=/done\" />");
               }
 
               if (buff.indexOf("GET /done HTTP") > -1){
-                Serial.println("Setup complete");
+                ESP_LOGV(LOG_TAG_GENERIC, "Setup complete");
                 client.print("<h1>Setup complete!</h1>Your wardriver will now boot normally.");
                 client.print("\n\r\n\r");
                 client.flush();
@@ -1538,7 +1510,7 @@ void boot_config(){
   if (con_ssid_update) {
     preferences.putString("ssid",con_ssid);
     preferences.putString("psk",con_psk);
-    Serial.println("* Updated saved WiFi SSID & PSK");
+    ESP_LOGV(LOG_TAG_GENERIC, "con_ssid_update to %s + %s", con_ssid.c_str(), con_psk.c_str());
   }
 
   boolean is_stable = true; //Currently running beta or stable, set automatically
@@ -1552,7 +1524,7 @@ void boot_config(){
   }
 
   if (con_ssid != "" || fb_ssid != ""){
-    Serial.print("Attempting to connect to WiFi");
+    ESP_LOGD(LOG_TAG_GENERIC, "Attempting to connect to WiFi");
     clear_display();
     display.print("Connecting to:");
     display.print(con_ssid);   // show the WiFi network name
@@ -1565,7 +1537,6 @@ void boot_config(){
         display.print(".");
         display.display();
         delay(150);
-        Serial.print(".");
         fcount++;
         if (fcount > 75){
           clear_display();
@@ -1587,7 +1558,7 @@ void boot_config(){
       created_network = true;
       delay(500);
     }
-    Serial.println();
+
     boolean update_available = false;
     if (WiFi.status() == WL_CONNECTED || created_network == true){
       IPAddress fb_IP = WiFi.softAPIP();
@@ -1595,17 +1566,15 @@ void boot_config(){
       if (!created_network){
         display.println("Attempting NTP sync");
         display.display();
-        Serial.println("Connected, getting the time");
+        ESP_LOGD(LOG_TAG_GENERIC, "Network connected, attempting NTP");
         configTime(0, 0, ntpServer);
 
-        Serial.print("Time is now set to ");
-        Serial.println(get_epoch(true));
-        Serial.println("Continuing..");
+        ESP_LOGI(LOG_TAG_GENERIC, "The time is now %u", get_epoch(true));
         String ota_test = ota_get_url("/");
-        Serial.println(ota_test);
+        ESP_LOGV(LOG_TAG_GENERIC, "OTA test, page root = %s", ota_test.c_str());
 
         //Implement a hash check, only run if there's a mismatch.
-        Serial.println("Getting Wigle cert..");
+        ESP_LOGD(LOG_TAG_GENERIC, "Will download wigle.crt");
         SD.remove("/wigle.crt");
         ota_get_url("/wigle.crt", "/wigle.crt");
 
@@ -1613,7 +1582,7 @@ void boot_config(){
         if (wigle_autoupload){
           wigle_upload_all();
         } else {
-          Serial.println("WiGLE autoupload disabled.");
+          ESP_LOGV(LOG_TAG_GENERIC, "Not performing WiGLE autoupload - it is disabled");
         }
 
         update_available = check_for_updates(is_stable, false);
@@ -1641,7 +1610,7 @@ void boot_config(){
         display.display();
         
         if (millis() > disconnectat){
-          Serial.println("Disconnecting");
+          ESP_LOGD(LOG_TAG_GENERIC, "Disconnecting from WiFi");
           clear_display();
           display.println("Disconnecting");
           display.display();
@@ -1652,7 +1621,7 @@ void boot_config(){
         WiFiClient client = server.available();
         if (client){
           unsigned long client_last_byte_at = millis();
-          Serial.println("client connected, awaiting request");
+          ESP_LOGV(LOG_TAG_GENERIC, "New client connection");
           clear_display();
           display.println("Client connected");
           display.println("Awaiting request..");
@@ -1660,24 +1629,23 @@ void boot_config(){
           boolean first_byte = true;
           while (client.connected()){
             if (millis() - client_last_byte_at > HTTP_TIMEOUT_MS){
-              Serial.println("HTTP client timeout, stopping");
+              ESP_LOGW(LOG_TAG_GENERIC, "Hit the HTTP client last_byte timeout, breaking the connection");
               client.stop();
             }
             if (client.available()){
               client_last_byte_at = millis();
               if (first_byte){
                 first_byte = false;
-                Serial.println("Got first byte of request");
+                ESP_LOGV(LOG_TAG_GENERIC, "Got the first byte of the request");
                 display.println("Handling request..");
                 display.display();
               }
               char c = client.read();
-              Serial.write(c);
+              
               buff += c;
               if (c == '\n'){
                 if (newline){
-                  Serial.println("End of message");
-                  Serial.println(buff);
+                  ESP_LOGV(LOG_TAG_GENERIC, "End of client request: %s", buff.c_str());
                   client.println("HTTP/1.1 200 OK");
                   client.println("Connection: close");
                   
@@ -1686,7 +1654,7 @@ void boot_config(){
                   if (buff.indexOf("GET / HTTP") > -1) {
                     client.println("Content-type: text/html");
                     client.println();
-                    Serial.println("Sending homepage");
+                    ESP_LOGV(LOG_TAG_GENERIC, "Sending homepage");
                     client.println("<style>html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
                     client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk " + device_type_string() + " by Joseph Hewitt</h1></head>");
                     if (update_available && !SD.exists("/A.bin") && !SD.exists("/B.bin")){
@@ -1718,7 +1686,7 @@ void boot_config(){
                     client.println("</p>");
                     
                     client.println("<table><tr><th>File</th><th>Size</th><th>Status</th><th>Opt</th></tr>");
-                    Serial.println("Scanning for files");
+                    ESP_LOGD(LOG_TAG_GENERIC, "Scanning for files");
                     File dir = SD.open("/");
                     while (true) {
                       File entry = dir.openNextFile();
@@ -1812,7 +1780,7 @@ void boot_config(){
 
                   if (buff.indexOf("GET /repupdate") > -1){
                     //Would be really great to stop hardcoding this one day.
-                    Serial.println("Replace updates requested");
+                    ESP_LOGD(LOG_TAG_GENERIC, "Replace updates requested");
                     SD.remove("/A.bin");
                     SD.remove("/B.bin");
                     client.println("Content-type: text/html");
@@ -1824,19 +1792,19 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /dlupdate") > -1){
+                    ESP_LOGD(LOG_TAG_GENERIC, "dlupdate requested");
                     boolean install_stable = is_stable;
                     if (buff.indexOf("?v=b") > -1){
                       install_stable = false;
-                      Serial.println("Requested beta");
+                      ESP_LOGV(LOG_TAG_GENERIC, "beta requested");
                     }
                     if (buff.indexOf("?v=s") > -1){
                       install_stable = true;
-                      Serial.println("Requested stable");
+                      ESP_LOGV(LOG_TAG_GENERIC, "stable requested");
                     }
                     
                     client.println("Content-type: text/html");
                     client.println();
-                    Serial.println("/dlupdate requested");
                     client.print("<h1>Downloading updates. Check the wardriver LCD for progress</h1>");
                     client.print("Check <a href=\"/fwup\">this page</a> once the download is complete");
                     client.print("\n\r\n\r");
@@ -1847,7 +1815,7 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /wigle-setup") > -1){
-                    Serial.println("Sending wigle-setup page");
+                    ESP_LOGD(LOG_TAG_GENERIC, "Sending wigle-setup page");
                     client.println("Content-type: text/html");
                     client.println();
                     client.print("<style>html{font-size:21px;text-align:center;padding:20px}input[type=text],input[type=password],input[type=submit],select{padding:5px;width:100%;max-width:1000px}form{padding-top:10px}br{display:block;margin:5px 0}</style>");
@@ -1876,7 +1844,7 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /wcfg?") > -1){
-                    Serial.println("Got WiGLE config");
+                    ESP_LOGD(LOG_TAG_GENERIC, "Got WiGLE config");
                     client.println("Content-type: text/html");
                     client.println();
                     
@@ -1884,7 +1852,7 @@ void boot_config(){
                       wigle_commercial = true;
                       //Really, lets use POST requests for this soon.
                       buff.replace("&commercial=commercial","");
-                      Serial.println("WiGLE commercial optin selected");
+                      ESP_LOGV(LOG_TAG_GENERIC, "WiGLE commercial optin selected");
                     } else {
                       wigle_commercial = false;
                     }
@@ -1894,7 +1862,7 @@ void boot_config(){
                       wigle_autoupload = true;
                       buff.replace("&autoupload=autoupload","");
                       preferences.putLong("wigle_mf", bootcount);
-                      Serial.println("WiGLE autoupload enabled");
+                      ESP_LOGV(LOG_TAG_GENERIC, "WiGLE autoupload enabled");
                     } else {
                       wigle_autoupload = false;
                     }
@@ -1916,7 +1884,7 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /ota_change_pref") > -1){
-                    Serial.println("Toggle OTA prefs");
+                    ESP_LOGD(LOG_TAG_GENERIC, "Toggle OTA prefs");
                     ota_optout = !ota_optout;
                     client.println("Content-type: text/html");
                     client.println();
@@ -1929,7 +1897,7 @@ void boot_config(){
                   if (buff.indexOf("GET /fwup") > -1){
                     client.println("Content-type: text/html");
                     client.println();
-                    Serial.println("Sending FW update page");
+                    ESP_LOGD(LOG_TAG_GENERIC, "Sending FW update page");
                     client.println("<style>#hide{display:none}html,td,th{font-size:21px;text-align:center;padding:20px }table{padding:5px;width:100%;max-width:1000px;}td, th{border: 1px solid #999;padding: 0.5rem;}</style>");
                     client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><h1>wardriver.uk updater</h1></head>");
                     client.println("<body><p>This page may take a while to load since hashes are generated for each file.</p>");
@@ -1968,8 +1936,7 @@ void boot_config(){
                         }
                         client.println("<tr><td>B.bin</td><td><p style=\"color:" + color + "\">" + filehash + " " + emoji + "</p><p>" + check_result + "</td><td><a href=\"/fwins?h=" + filehash + "&n=/B.bin\">Install</a></td></tr>");
                       } else {
-                        Serial.print("B hash matches installed hash, deleting ");
-                        Serial.println(filehash);
+                        ESP_LOGI(LOG_TAG_GENERIC, "Side B hash match, will delete B.bin. Hash = %s", filehash.c_str());
                         SD.remove("/B.bin");
                       }
                     }
@@ -1987,12 +1954,10 @@ void boot_config(){
 
                     client.println("Content-type: text/html");
                     client.println();
-                    Serial.print("Firmware install requested: ");
-                    Serial.print(fw_filename);
-                    Serial.print(expect_hash);
+                    ESP_LOGD(LOG_TAG_GENERIC, "Firmware install requested, file = %s, hash = %s", fw_filename.c_str(), expect_hash.c_str());
 
                     if (expect_hash.length() > 0 && SD.exists(fw_filename)) {
-                      Serial.println("Will install firmware");
+                      ESP_LOGD(LOG_TAG_GENERIC, "Prepare to install update");
                       client.print("<h1>Firmware will now be installed. Check the wardriver LCD for progress</h1>");
                       client.print("\n\r\n\r");
                       client.flush();
@@ -2000,7 +1965,7 @@ void boot_config(){
                       client.stop();
                       boolean install_result = install_firmware(fw_filename, expect_hash);
                       if (!install_result){
-                        Serial.println("Update failed");
+                        ESP_LOGD(LOG_TAG_GENERIC, "Update failed");
                         clear_display();
                         display.println("Update failed");
                         display.display();
@@ -2017,11 +1982,11 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("POST /fw") > -1){
-                    Serial.println("Incoming firmware");
                     int startpos = buff.indexOf("?n=")+3;
                     int endpos = buff.indexOf(" ",startpos);
                     String bin_filename = buff.substring(startpos,endpos);
-                    Serial.println(bin_filename);
+
+                    ESP_LOGD(LOG_TAG_GENERIC, "Incoming firmware %s", bin_filename.c_str());
                     String newname = "/other.bin";
                     if (bin_filename.startsWith("A")){
                       newname = "/A.bin";
@@ -2030,7 +1995,7 @@ void boot_config(){
                       newname = "/B.bin";
                     }
 
-                    Serial.println(newname);
+                    ESP_LOGD(LOG_TAG_GENERIC, "Will save incoming firmware as %s", newname.c_str());
                     if (SD.exists(newname)){
                       SD.remove(newname);
                     }
@@ -2039,12 +2004,6 @@ void boot_config(){
                     clear_display();
                     display.println("Firmware upload");
                     display.display();
-
-                    //Setup a hash context, and somewhere to keep the output.
-                    unsigned char genhash[32];
-                    mbedtls_sha256_context ctx;
-                    mbedtls_sha256_init(&ctx);
-                    mbedtls_sha256_starts(&ctx, 0);
 
                     unsigned long fw_last_byte = millis();
                     byte bbuf[2] = {0x00, 0x00};
@@ -2055,7 +2014,6 @@ void boot_config(){
                         bytesin++;
                         binwriter.write(c);
                         bbuf[0] = c;
-                        mbedtls_sha256_update(&ctx, bbuf, 1);
                         
                         fw_last_byte = millis();
                         if (bytesin % 4096 == 0){
@@ -2067,9 +2025,8 @@ void boot_config(){
                         }
                       }
                       if (millis() - fw_last_byte > 4000){
-                        Serial.println("Done");
-                        mbedtls_sha256_finish(&ctx, genhash);
-                        print_hex("HASHED", genhash, sizeof genhash);
+                        ESP_LOGD(LOG_TAG_GENERIC, "Incoming firmware saved");
+                        
                         binwriter.flush();
                         binwriter.close();
                         break;
@@ -2079,7 +2036,7 @@ void boot_config(){
 
                   if (buff.indexOf("GET /time?") > -1){
                     client.println("Content-type: text/html");
-                    Serial.println("Got time from browser");
+                    
                     int startpos = buff.indexOf("?v=")+3;
                     int endpos = buff.indexOf(" ",startpos);
                     String newtime_str = buff.substring(startpos,endpos);
@@ -2088,22 +2045,20 @@ void boot_config(){
                       //if the epoch value is set to something before 2020, we can be quite sure it is inaccurate.
                       if (newtime > YEAR_2020){
                         //A very basic validity test for the datetime value issued by the client.
-                        Serial.println("Current clock is inaccurate, using time from client");
+                        
                         set_sys_clock(newtime);
-                        Serial.print("epoch is now ");
-                        Serial.println(get_epoch());
+                        ESP_LOGI(LOG_TAG_GENERIC, "Updated local time from connected client to %u", newtime);
                       }
                     }
                   }
 
                   if (buff.indexOf("GET /upload?") > -1) {
-                    Serial.println("File upload request");
                     int startpos = buff.indexOf("?fn=")+4;
                     int endpos = buff.indexOf(" ",startpos);
                     String filename = buff.substring(startpos,endpos);
-                    Serial.println(filename);
+                    ESP_LOGD(LOG_TAG_GENERIC, "File upload request for %s", filename.c_str());
                     if (!SD.exists(filename)){
-                      Serial.println("file does not exist");
+                      ESP_LOGW(LOG_TAG_GENERIC, "File upload request, but file does not exist: %s", filename.c_str());
                       client.println("Content-type: text/html");
                       client.println();
                       client.print("<h1>File not found </h1>");
@@ -2120,9 +2075,8 @@ void boot_config(){
                       delay(5);
                       client.stop();
                       boolean success = wigle_upload(filename);
-                      Serial.print("Success? ");
-                      Serial.println(success);
                       if (success == true){
+                        ESP_LOGD(LOG_TAG_GENERIC, "File upload complete");
                         clear_display();
                         display.println("Uploaded OK");
                         display.display();
@@ -2133,13 +2087,12 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /delete?") > -1) {
-                    Serial.println("File delete pre-request");
+                    ESP_LOGD(LOG_TAG_GENERIC, "File delete request (pre-confirmation)");
                     int startpos = buff.indexOf("?fn=")+4;
                     int endpos = buff.indexOf(" ",startpos);
                     String filename = buff.substring(startpos,endpos);
-                    Serial.println(filename);
                     if (!SD.exists(filename)){
-                      Serial.println("file does not exist");
+                      ESP_LOGW(LOG_TAG_GENERIC, "Cannot delete %s since it does not exist", filename.c_str());
                       client.println("Content-type: text/html");
                       client.println();
                       client.print("<h1>File not found </h1>");
@@ -2157,13 +2110,13 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /confirmdelete?") > -1) {
-                    Serial.println("File delete request");
+                    ESP_LOGD(LOG_TAG_GENERIC, "File delete request");
                     int startpos = buff.indexOf("?fn=")+4;
                     int endpos = buff.indexOf(" ",startpos);
                     String filename = buff.substring(startpos,endpos);
-                    Serial.println(filename);
                     if (!filename.endsWith(".csv") && !filename.endsWith(".bin")){
                       //Prevent accessing non-csv files, with the exception of test.txt
+                      ESP_LOGW(LOG_TAG_GENERIC, "User is not allowed to delete %s", filename.c_str());
                       client.println("Content-type: text/html");
                       client.println();
                       client.print("Not allowed");
@@ -2172,6 +2125,7 @@ void boot_config(){
                       client.stop();
                     }
                     
+                    ESP_LOGI(LOG_TAG_GENERIC, "Will now delete", filename.c_str());
                     SD.remove(filename);
                     client.println("Content-type: text/html");
                     client.println();
@@ -2183,14 +2137,12 @@ void boot_config(){
                   }
 
                   if (buff.indexOf("GET /download?") > -1) {
-                    Serial.println("File download request");
                     int startpos = buff.indexOf("?fn=")+4;
                     int endpos = buff.indexOf(" ",startpos);
                     String filename = buff.substring(startpos,endpos);
-                    Serial.println(filename);
                     if (!filename.endsWith(".csv") && filename != "/test.txt"){
                       //Prevent accessing non-csv files, with the exception of test.txt
-                      Serial.println("Not allowed");
+                      ESP_LOGW(LOG_TAG_GENERIC, "User is not allowed to download %s", filename.c_str());
                       client.println("Content-type: text/html");
                       client.println();
                       client.print("Not allowed");
@@ -2202,8 +2154,10 @@ void boot_config(){
                       break;
                     }
 
+                    ESP_LOGD(LOG_TAG_GENERIC, "Client is downloading %s", filename.c_str());
                     File reader = SD.open(filename, FILE_READ);
                     if (!reader){
+                      ESP_LOGW(LOG_TAG_GENERIC, "Failed to open %s for download", filename.c_str());
                       client.println("Content-type: text/html");
                       client.println();
                       client.print("Invalid file");
@@ -2214,8 +2168,8 @@ void boot_config(){
                       break;
                     }
                     if (reader){
+                      ESP_LOGV(LOG_TAG_GENERIC, "Sending file now");
                       client.println("Content-type: text/csv");
-                      Serial.println("Sending file");
                       client.print("Content-Disposition: attachment; filename=\"");
                       client.print(generate_filename(filename));
                       client.println("\"");
@@ -2227,6 +2181,7 @@ void boot_config(){
                       delay(2);
                       client.write(reader);
                       reader.close();
+                      ESP_LOGV(LOG_TAG_GENERIC, "File sent");
                     }
                   }
 
@@ -2236,6 +2191,7 @@ void boot_config(){
                     client.flush();
                     delay(5);
                     client.stop();
+                    ESP_LOGV(LOG_TAG_GENERIC, "End of connection");
                   }
                   buff = "";
                   disconnectat = millis() + web_timeout;
@@ -2277,14 +2233,13 @@ void push_config(String key){
   Serial1.print("=");
   Serial1.println(value);
   Serial1.flush();
-  Serial.print("Pushing config ");
-  Serial.println(key);
+  ESP_LOGV(LOG_TAG_GENERIC, "Push config %s", key.c_str());
 }
 
 void send_config_to_b(){
+  ESP_LOGD(LOG_TAG_GENERIC, "Sending config options to side B");
   //This will be called when B requests it and at boot.
   //This should contain a bunch of push_config(xx) options.
-  Serial.println("Sending config options to B..");
   push_config("sb_bw16");
   // BlueTooth scan preference
   push_config("scanble");
@@ -2295,17 +2250,13 @@ void setup() {
     delay(500);
     
     Serial.begin(115200);
-    Serial.print("Starting v");
-    Serial.print(VERSION);
-    Serial.print(", build: ");
-    Serial.println(BUILD);
+    ESP_LOGI(LOG_TAG_GENERIC, "Starting v%s, build %s", VERSION.c_str(), BUILD.c_str());
 
     for(int i=0; i<17; i=i+8) {
       chip_id |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
     }
 
-    Serial.print("Chip ID: ");
-    Serial.println(chip_id);
+    ESP_LOGD(LOG_TAG_GENERIC, "Chip ID: %u", chip_id);
 
     default_ssid.concat(" - ");
     default_ssid.concat(chip_id);
@@ -2314,7 +2265,7 @@ void setup() {
     Serial1.begin(115200,SERIAL_8N1,27,14);
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
-      Serial.println(F("SSD1306 allocation failed"));
+      ESP_LOGE(LOG_TAG_GENERIC, "SSD1306 allocation failed");
     }
     if (!rotate_display){
       display.setRotation(2);
@@ -2347,38 +2298,29 @@ void setup() {
     setup_id_pins();
   
     if(!SD.begin(SD_CS, SPI, SPI_FREQ)){
-        Serial.println("SD Begin failed!");
+        ESP_LOGE(LOG_TAG_GENERIC, "SD Begin failed!");
         clear_display();
         display.println("SD Begin failed!");
         display.display();
         delay(4000);
     }
     uint8_t cardType = SD.cardType();
+    ESP_LOGD(LOG_TAG_GENERIC, "SD card type is %u", cardType);
     if(cardType == CARD_NONE){
-        Serial.println("No SD card attached!");
+        ESP_LOGE(LOG_TAG_GENERIC, "No SD card is attached");
         clear_display();
         display.println("No SD Card!");
         display.display();
         delay(10000);
     }
   
-    Serial.print("SD Card Type: ");
-    if(cardType == CARD_MMC){
-        Serial.println("MMC");
-    } else if(cardType == CARD_SD){
-        Serial.println("SDSC");
-    } else if(cardType == CARD_SDHC){
-        Serial.println("SDHC");
-    } else {
-        Serial.println("UNKNOWN");
-    }
-  
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    ESP_LOGI(LOG_TAG_GENERIC, "SD Card size: %lluMB", cardSize);
 
-    Serial.println("Attempting GPS date/time sync..");
-
+    ESP_LOGD(LOG_TAG_GENERIC, "Starting GPS serial at %i baud", gps_baud_rate);
     Serial2.begin(gps_baud_rate,SERIAL_8N1,16,17);
+
+    ESP_LOGD(LOG_TAG_GENERIC, "Attempting GPS date/time sync");
 
     for (int x = 0; x < 3000; x++){
       int c_count = 0;
@@ -2401,12 +2343,12 @@ void setup() {
       delay(1);
     }
     gps_time_sync();
-    Serial.print("Date/time is now: ");
-    Serial.println(dt_string_from_gps());
+    ESP_LOGD(LOG_TAG_GENERIC, "Date/time is: %s", dt_string_from_gps().c_str());
 
     while (!filewriter){
       filewriter = SD.open("/test.txt", FILE_APPEND);
       if (!filewriter){
+        //Do not pass this through to the logging functions since we need to be sure it doesn't get supressed.
         Serial.println("Failed to open file for writing. Type continue to skip this check.");
         clear_display();
         display.println("SD File open failed!");
@@ -2434,6 +2376,7 @@ void setup() {
     filewriter.flush();
     if (wrote < 1){
       while(true){
+        //Do not pass this through to the logging functions since we need to be sure it doesn't get supressed.
         Serial.println("Failed to write to SD card! Type continue to resume boot process.");
         clear_display();
         display.println("SD Card write failed!");
@@ -2471,8 +2414,7 @@ void setup() {
       b_side_hash.concat(b_side_hash_full.charAt(x));
     }
 
-    Serial.print("This device: ");
-    Serial.println(device_type_string());
+    ESP_LOGI(LOG_TAG_GENERIC, "This hardware identity is %s", device_type_string().c_str());
     
     filewriter.print(", bc=");
     filewriter.print(bootcount);
@@ -2484,7 +2426,7 @@ void setup() {
     filewriter.close();
 
     if (SD.exists("/bl.txt")){
-      Serial.println("Opening blocklist");
+      ESP_LOGD(LOG_TAG_GENERIC, "Opening blocklist");
       File blreader;
       blreader = SD.open("/bl.txt", FILE_READ);
       byte i = 0;
@@ -2501,7 +2443,7 @@ void setup() {
           block_list[i].characters[ci] = c;
           ci += 1;
           if (ci >= blocklist_str_len){
-            Serial.println("Blocklist line too long!");
+            ESP_LOGW(LOG_TAG_GENERIC, "Blocklist line too long!");
             ci = 0;
           }
         }
@@ -2510,10 +2452,10 @@ void setup() {
     }
 
     if (!use_blocklist){
-      Serial.println("Not using a blocklist");
+      ESP_LOGD(LOG_TAG_GENERIC, "Not using a blocklist");
     }
     
-    Serial.println("Opening destination file for writing");
+    ESP_LOGD(LOG_TAG_GENERIC, "Opening destination file for writing");
 
     String filename = "";
     while (filename == "" || SD.exists(filename)){
@@ -2521,19 +2463,17 @@ void setup() {
       filename = filename + bootcount;
       filename = filename + ".csv";
       if (SD.exists(filename)){
-        Serial.print("File already exists at ");
-        Serial.print(filename);
+        ESP_LOGD(LOG_TAG_GENERIC, "File already exists at %s", filename.c_str());
         bootcount++;
         filename = "";
         preferences.begin("wardriver", false);
         preferences.putULong("bootcount", bootcount);
         preferences.end();
-        Serial.print("Incremented bootcount to ");
-        Serial.println(bootcount);
+        ESP_LOGD(LOG_TAG_GENERIC, "Incremented bootcount to %u", bootcount);
       }
     }
-    Serial.print("Opening file for main session: ");
-    Serial.println(filename);
+    
+    ESP_LOGI(LOG_TAG_GENERIC, "Opening file for main session: %s", filename.c_str());
     filewriter = SD.open(filename, FILE_APPEND);
     
     filewriter.print("WigleWifi-1.4,appRelease=wardriver.uk " + VERSION + ",model=" + device_type_string() + ",release=wardriver.uk " + VERSION + ",device=" + device_string() + ",display=i2c LCD,board=" + device_board_string() + ",brand=" + device_brand_string() + "\n");
@@ -2544,6 +2484,7 @@ void setup() {
     display.println("Starting main..");
     display.display();
     started_at_millis = millis();
+    ESP_LOGI(LOG_TAG_GENERIC,"Starting main");
 
     xTaskCreatePinnedToCore(
       primary_scan_loop, /* Function to implement the task */
@@ -2561,14 +2502,16 @@ void primary_scan_loop(void * parameter){
   while (true){
     disp_wifi_count = wifi_count;
     wifi_count = 0;
+    
     for(int scan_channel = 1; scan_channel < 12; scan_channel++){
       yield();
+      ESP_LOGV(LOG_TAG_GENERIC, "Start Scan C%i", scan_channel);
       //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
       int n = WiFi.scanNetworks(false,true,false,110,scan_channel);
+      ESP_LOGV(LOG_TAG_GENERIC, "Finish Scan C%i = %i", scan_channel, n);
       if (n < 0){
         //Got a scan error, add a delay to allow other tasks on this core to run and to hopefully let WiFi issues settle down
-        Serial.print("SCAN FAILURE ");
-        Serial.println(n);
+        ESP_LOGW(LOG_TAG_GENERIC, "Scan failed, n=%i", n);
         delay(1000);
       }
       if (n > 0){
@@ -2740,7 +2683,7 @@ void loop(){
     lcd_last_updated = millis();
   }
   if (auto_reset_ms != 0 && millis() > auto_reset_ms){
-    Serial.println("AUTO RESET TIMER REACHED");
+    ESP_LOGI(LOG_TAG_GENERIC, "Will now restart; auto reset timer has been reached");
     clear_display();
     display.println("AUTO RESET");
     display.println("Timer reached.");
@@ -2759,8 +2702,7 @@ void save_cell(struct cell_tower tower){
 
   cell_history_cursor++;
 
-  Serial.print("Tower len ");
-  Serial.println(cell_history_cursor);
+  ESP_LOGV(LOG_TAG_GENERIC, "save_cell: cell_history_cursor is %u", cell_history_cursor);
 }
 
 boolean is_blocked(String test_str){
@@ -2772,8 +2714,7 @@ boolean is_blocked(String test_str){
     return false;
   }
   if (test_str_len > blocklist_str_len){
-    Serial.print("Refusing to blocklist check due to length: ");
-    Serial.println(test_str);
+    ESP_LOGV(LOG_TAG_GENERIC, "Refusing blocklist check due to length of %u: %s", test_str_len, test_str.c_str());
     return false;
   }
   for (byte i=0; i<blocklist_len; i++){
@@ -2785,8 +2726,7 @@ boolean is_blocked(String test_str){
       }
     }
     if (matched){
-      Serial.print("Blocklist match: ");
-      Serial.println(test_str);
+      ESP_LOGV(LOG_TAG_GENERIC, "Blocklist match: %s", test_str.c_str());
       return true;
     }
   }
@@ -2802,24 +2742,6 @@ void replace_cell(struct cell_tower tower1, struct cell_tower tower2){
       cell_history[x] = tower2;
     }
   }
-}
-
-void print_cell(struct cell_tower tower){
-  //Provide a cell_tower struct to be printed over serial
-  Serial.print(tower.mcc);
-  Serial.print(":");
-  Serial.print(tower.mnc);
-  Serial.print(":");
-  Serial.print(tower.lac);
-  Serial.print(":");
-  Serial.print(tower.cellid);
-  Serial.print("@");
-  Serial.print(tower.pos.lat, 6);
-  Serial.print(",");
-  Serial.print(tower.pos.lon, 6);
-  Serial.print(",");
-  Serial.println(tower.pos.acc);
-  //printf ;)
 }
 
 boolean cell_cmp(struct cell_tower tower, struct cell_tower tower2){
@@ -2873,8 +2795,7 @@ void save_mac(unsigned char* mac){
 
   mac_history[mac_history_cursor] = tmp;
   mac_history_cursor++;
-  Serial.print("Mac len ");
-  Serial.println(mac_history_cursor);
+  ESP_LOGV(LOG_TAG_GENERIC, "save_mac mac_history_cursor = %u", mac_history_cursor);
 }
 
 boolean seen_mac(unsigned char* mac){
@@ -2940,10 +2861,7 @@ String parse_bside_line(String buff){
 
     if (is_blocked(ble_name) || is_blocked(mac_str)){
       out = "";
-      Serial.print("BLOCK: ");
-      Serial.print(ble_name);
-      Serial.print(" / ");
-      Serial.println(mac_str);
+      ESP_LOGV(LOG_TAG_GENERIC, "Blocked BLE entry (from B): %s / %s", ble_name.c_str(), mac_str.c_str());
       ble_block_at = millis();
       return out;
     }
@@ -2956,8 +2874,7 @@ String parse_bside_line(String buff){
       if (!seen_mac(mac_bytes)){
         save_mac(mac_bytes);
         //Save to SD?
-        Serial.print("NEW BLE DEVICE: ");
-        Serial.println(buff);
+        ESP_LOGV(LOG_TAG_GENERIC, "New BLE device, buff = %s", buff.c_str());
 
         mac_str.toUpperCase();
         out = mac_str + "," + ble_name + "," + "[BLE]," + dt_string(get_epoch()) + ",0," + rssi + "," + gps_string() + ",BLE";
@@ -2968,16 +2885,15 @@ String parse_bside_line(String buff){
   if (buff.indexOf("RESET=") > -1) {
     if (millis() - started_at_millis < 10000){
       //We will ignore this if we recently started running because then it's normal behavior, not a fault.
-      Serial.print("IGNORING: ");
-      Serial.println(buff);
+      ESP_LOGD(LOG_TAG_GENERIC, "Ignoring msg from B due to uptime, buff = %s", buff.c_str());
       return out;
     }
     String b_reset_reason = buff;
     b_reset_reason.replace("RESET=","");
     b_reset_reason.replace("\r","");
     b_reset_reason.replace("\n","");
-    Serial.print("Side B reports reset, code ");
-    Serial.println(b_reset_reason);
+    ESP_LOGW(LOG_TAG_GENERIC, "B reports reset with code %s", b_reset_reason.c_str());
+
     File testfilewriter = SD.open("/test.txt", FILE_APPEND);
     testfilewriter.print("\n\r_B-RST_");
     testfilewriter.print(b_reset_reason);
@@ -3020,10 +2936,7 @@ String parse_bside_line(String buff){
 
     if (is_blocked(ssid) || is_blocked(mac_str)){
       out = "";
-      Serial.print("BLOCK: ");
-      Serial.print(ssid);
-      Serial.print(" / ");
-      Serial.println(mac_str);
+      ESP_LOGV(LOG_TAG_GENERIC, "Blocked WiFi entry (from B): %s / %s", ssid.c_str(), mac_str.c_str());
       wifi_block_at = millis();
       return out;
     }
@@ -3138,16 +3051,14 @@ String parse_bside_line(String buff){
     int startpos = buff.indexOf("TEMP,")+5;
     String temp = buff.substring(startpos);
     temperature = temp.toFloat();
-    Serial.print("Temperature = ");
-    Serial.println(temperature);
+    ESP_LOGV(LOG_TAG_GENERIC, "Got temperature: %s / %f", buff.c_str(), temperature);
   }
 
   if (buff.indexOf("BLC,") > -1) {
     int startpos = buff.indexOf("BLC,")+4;
     String blc = buff.substring(startpos);
     ble_count = blc.toInt();
-    Serial.print("Bluetooth count = ");
-    Serial.println(ble_count);
+    ESP_LOGV(LOG_TAG_GENERIC, "Got BLE count: %s / %i", buff.c_str(), ble_count);
     b_working = true;
   }
 
@@ -3155,8 +3066,7 @@ String parse_bside_line(String buff){
     int startpos = buff.indexOf("5G,")+3;
     String count_5ghz_str = buff.substring(startpos);
     count_5ghz = count_5ghz_str.toInt();
-    Serial.print("5GHz count = ");
-    Serial.println(count_5ghz);
+    ESP_LOGV(LOG_TAG_GENERIC, "Got 5GHz WiFi count: %s / %i", buff.c_str(), count_5ghz);
     b_working = true;
     is_5ghz = true;
   }
@@ -3221,7 +3131,7 @@ String gps_string(){
       lons = last_lons;
       accuracy = 5 + (millis() - lastgps) / 100;
     } else {
-      Serial.println("Bad GPS, using GSM location");
+      ESP_LOGD(LOG_TAG_GENERIC, "Bad GPS, will use GSM positioning");
       struct coordinates pos = gsm_get_current_position();
       if (pos.acc > 0){
         lats = String(pos.lat, 6);
@@ -3240,6 +3150,7 @@ String gps_string(){
     lats = String(force_lat, 6);
     lons = String(force_lon, 6);
     accuracy = 1;
+    ESP_LOGV(LOG_TAG_GENERIC, "Forced Lat/Lon to: %f,%f", force_lat, force_lon);
   }
 
   out = lats + "," + lons + "," + altf + "," + accuracy;
@@ -3303,6 +3214,7 @@ String get_latest_datetime(String filename, boolean date_only){
   String dt = "";
   if (meta_lastwrite > YEAR_2020){
     dt = dt_string(meta_lastwrite);
+    ESP_LOGD(LOG_TAG_GENERIC, "get_latest_datetime, NEW method for file %s = %s", filename, dt);
   } else {
     int seekto = reader.size()-512;
     if (seekto < 1){
@@ -3318,8 +3230,7 @@ String get_latest_datetime(String filename, boolean date_only){
           int endpos = buff.indexOf(",",startpos+3);
           if (startpos > 0 && endpos > 0){
             dt = buff.substring(startpos+2,endpos);
-            Serial.print("Got (old method): ");
-            Serial.println(dt);
+            ESP_LOGD(LOG_TAG_GENERIC, "get_latest_datetime, OLD method for file %s = %s", filename, dt);
             break;
           } 
         }
@@ -3338,8 +3249,7 @@ String get_latest_datetime(String filename, boolean date_only){
     int spacepos = dt.indexOf(" ");
     String new_dt = dt.substring(0,spacepos);
     dt = new_dt;
-    Serial.print("Stripped to: ");
-    Serial.println(dt);
+    ESP_LOGV(LOG_TAG_GENERIC, "get_latest_datetime, date_only stripped to %s for %s", dt, filename);
   }
   return dt;
 }
@@ -3388,23 +3298,20 @@ struct coordinates get_cell_pos(String wigle_key){
   struct coordinates toreturn;
   toreturn = (coordinates){.lat = 0, .lon = 0, .acc = -127};
 
-  Serial.print("locating ");
-  Serial.println(wigle_key);
+  ESP_LOGD(LOG_TAG_GENERIC, "Cell Tower lookup for %s", wigle_key.c_str());
   int endpos = wigle_key.indexOf("_");
   String mccmnc = wigle_key.substring(0,endpos);
   
   int startpos = endpos+1;
   endpos = wigle_key.indexOf("_", startpos);
   String lac = wigle_key.substring(startpos,endpos);
-  Serial.print("LAC = ");
-  Serial.println(lac);
+  ESP_LOGV(LOG_TAG_GENERIC, "Cell Tower lookup LAC is %s", lac.c_str());
 
   String mccmnclac = mccmnc + "_" + lac;
 
   File filereader = SD.open("/cells/" + mccmnc + ".csv", FILE_READ);
   if (!filereader){
-    Serial.print("file not found for ");
-    Serial.println(mccmnc);
+    ESP_LOGD(LOG_TAG_GENERIC, "Cell Tower lookup file not found for %s", mccmnc.c_str());
     return toreturn;
   }
 
@@ -3420,15 +3327,13 @@ struct coordinates get_cell_pos(String wigle_key){
       if (buff.length() < 17){
         //Index lines are the only lines which are under 17 chars in these files
         if (buff.indexOf(lac + ",") == 0){
-          Serial.print("Found relevant index ");
-          Serial.println(buff);
+          ESP_LOGV(LOG_TAG_GENERIC, "Index found for LAC %s, buff = %s", lac.c_str(), buff.c_str());
           //This index entry is what we need.
           startpos = buff.indexOf(",")+1;
           String offset_str = buff.substring(startpos);
           int offset = offset_str.toInt()-64;
           if (offset > filereader.position()){
-            Serial.print("Jump to ");
-            Serial.println(offset);
+            ESP_LOGV(LOG_TAG_GENERIC, "Index jump to pos %i", offset);
             filereader.seek(offset);
             lines = 0;
             buff = "";
@@ -3438,8 +3343,7 @@ struct coordinates get_cell_pos(String wigle_key){
         }
       }
       if (buff.indexOf(wigle_key) > -1){
-        Serial.print("FOUND: ");
-        Serial.println(buff);
+        ESP_LOGV(LOG_TAG_GENERIC, "Tower lookup, wigle key (%s) found, buff = %s", wigle_key.c_str(), buff.c_str());
 
         startpos = buff.indexOf(",")+1;
         endpos = buff.indexOf(",",startpos);
@@ -3465,37 +3369,29 @@ struct coordinates get_cell_pos(String wigle_key){
         if (in_position == false){
           if (buff.indexOf(mccmnclac) > -1){
             in_position = true;
-            Serial.print("Now in position at ");
-            Serial.print(filereader.position());
-            Serial.print(" ");
-            Serial.println(lines);
+            ESP_LOGV(LOG_TAG_GENERIC, "Now in position at %i, lines = %i", filereader.position(), lines);
           }
         }
         if (buff.indexOf(mccmnclac) < 0 && index_read == true && in_position == true){
-          Serial.print("read ");
-          Serial.println(buff);
-          Serial.println("^^^ wrong section, stopping");
+          ESP_LOGD(LOG_TAG_GENERIC, "Reading the wrong section, stopping. Buff = %s", buff.c_str());
           break;
         }
       }
       lines++;
       buff = "";
       if (lines >= 5000){
-        Serial.println("Gave up");
+        ESP_LOGD(LOG_TAG_GENERIC, "Giving up - read too many lines");
         break;
       }
     }
   }
-  Serial.print("read lines: ");
-  Serial.println(lines);
+  ESP_LOGD(LOG_TAG_GENERIC, "Done. Read %i lines.", lines);
   filereader.close();
   return toreturn;
 }
 
 struct coordinates gsm_get_current_position(){
   //Get our current position using recently seen cell towers.
-
-  Serial.println("GSM get position");
 
   struct coordinates toreturn = (coordinates){.lat = 0, .lon = 0, .acc = -255};
    
@@ -3514,8 +3410,6 @@ struct coordinates gsm_get_current_position(){
       continue;
     }
     if (tower.seenat+20000 < millis()){
-      Serial.print("seen too long ago: ");
-      print_cell(tower);
       continue;
     }
     
@@ -3529,12 +3423,7 @@ struct coordinates gsm_get_current_position(){
     if (strength < 1){
       strength = 1;
     }
-    Serial.print("Using tower: ");
-    print_cell(tower);
-    Serial.print(" with strength ");
-    Serial.print(strength);
-    Serial.print(", raw: ");
-    Serial.println(tower.strength);
+    ESP_LOGV(LOG_TAG_GENERIC, "Using tower %i with strength %i", tower.cellid, tower.strength);
     for (int y = 0; y <= strength; y++){
       lat_total += tower.pos.lat;
       lon_total += tower.pos.lon;
@@ -3542,21 +3431,14 @@ struct coordinates gsm_get_current_position(){
     }
   }
 
-  Serial.print("GSM Position from ");
-  Serial.print(total);
-  Serial.println(" towers:");
-
   double lat = lat_total / total;
   double lon = lon_total / total;
-
-  Serial.print(lat, 6);
-  Serial.print(",");
-  Serial.println(lon, 6);
 
   if (max_accuracy > 0){
     toreturn.lat = lat;
     toreturn.lon = lon;
     toreturn.acc = max_accuracy;
+    ESP_LOGD(LOG_TAG_GENERIC, "Got location from %i towers: %i,%i with accuracy %i", total,lat,lon,max_accuracy);
   }
 
   return toreturn;
@@ -3667,12 +3549,11 @@ byte identify_model(){
 
   if (DEVICE_TYPE != DEVICE_UNKNOWN){
     //We already know.
-    Serial.print("Device already identified as ");
-    Serial.println(device_type_string());
+    ESP_LOGD(LOG_TAG_GENERIC, "Already identified the device, returning now");
     return DEVICE_TYPE;
   }
   
-  Serial.println("Identifying hardware..");
+  ESP_LOGD(LOG_TAG_GENERIC, "Running hardware identification");
   
   //TODO: For models without "side B" serial, detect their respective bus here and do an immediate return.
 
@@ -3687,15 +3568,15 @@ byte identify_model(){
       if (c == '\n' || c == '\r'){
         //Handle buff.
         if (buff.indexOf("BLC,") > -1){
-          Serial.println("Identified Rev3 (cm)");
+          ESP_LOGD(LOG_TAG_GENERIC, "Device is Rev3 (cm)");
           return DEVICE_REV3;
         }
         if (buff.indexOf("REV3!") > -1){
-          Serial.println("Identified Rev3");
+          ESP_LOGD(LOG_TAG_GENERIC, "Device is Rev3");
           return DEVICE_REV3;
         }
         if (buff.indexOf("!REV3.5") > -1){
-          Serial.println("Identified Rev3 5Ghz");
+          ESP_LOGD(LOG_TAG_GENERIC, "Device is Rev3 5Ghz");
           return DEVICE_REV3_5;
         }
 
@@ -3712,7 +3593,7 @@ byte identify_model(){
     delay(1);
     i++;
   }
-  Serial.println("Failed to identify hardware");
+  ESP_LOGW(LOG_TAG_GENERIC, "Failed to identify device model");
   return DEVICE_UNKNOWN;
 }
 
@@ -3722,7 +3603,7 @@ String get_config_option(String key){
   char linebuf[max_line_len];
   File filereader = SD.open("/cfg.txt", FILE_READ);
   if (!filereader){
-    Serial.println("cfg.txt could not be opened");
+    ESP_LOGD(LOG_TAG_GENERIC, "Could not open cfg.txt");
     return "";
   }
 
@@ -3732,7 +3613,7 @@ String get_config_option(String key){
   while (filereader.available()){
     int buflen = filereader.readBytesUntil('\n', linebuf, max_line_len-1);
     if (buflen < 1){
-      Serial.println("Failed to read cfg line");
+      ESP_LOGD(LOG_TAG_GENERIC, "Failed to read line, buflen = %i", buflen);
       continue;
     }
     
@@ -3754,16 +3635,10 @@ String get_config_option(String key){
         value.concat(linebuf[i]);
       }
     }
-    Serial.print("cfgread: ");
-    Serial.print(cfgkey);
-    Serial.print(" eq ");
-    Serial.println(value);
+    ESP_LOGV(LOG_TAG_GENERIC, "Config read: %s = %s", cfgkey.c_str(), value.c_str());
 
     if (cfgkey == key){
-      Serial.print("cfg got: ");
-      Serial.print(cfgkey);
-      Serial.print(" equal to ");
-      Serial.println(value);
+      ESP_LOGV(LOG_TAG_GENERIC, "Config key match: %s", cfgkey.c_str());
 
       filereader.close();
       return value;
@@ -3771,8 +3646,7 @@ String get_config_option(String key){
     
   }
   
-  Serial.print("Did not find ");
-  Serial.println(key);
+  ESP_LOGD(LOG_TAG_GENERIC, "Did not find config %s", key.c_str());
   filereader.close();
   
   return "";
@@ -3820,7 +3694,6 @@ byte read_id_pins(){
   board_id = (board_id << 1) + digitalRead(32);
   board_id = (board_id << 1) + digitalRead(33);
 
-  Serial.print("Board ID = ");
-  Serial.println(board_id);
+  ESP_LOGV(LOG_TAG_GENERIC, "Board ID = %u", board_id);
   return board_id;
 }

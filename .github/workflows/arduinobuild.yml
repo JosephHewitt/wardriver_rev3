@@ -75,6 +75,10 @@ jobs:
           echo "Completed build $WARDRIVER_BUILD_ID" >> /tmp/build.log
           
           cp $BOOTAPP .
+
+          pip install esptool --exists-action i
+          esptool --chip esp32 merge-bin --flash_mode dio --flash-freq 80m --flash-size 4MB 0x1000 A/build/esp32.esp32.esp32/A.ino.bootloader.bin 0x8000 A/build/esp32.esp32.esp32/A.ino.partitions.bin 0xe000 boot_app0.bin 0x10000 A/build/esp32.esp32.esp32/A.ino.bin -o "A-merged-$WARDRIVER_BUILD_ID.bin"
+          esptool --chip esp32 merge-bin --flash_mode dio --flash-freq 80m --flash-size 4MB 0x1000 B/build/esp32.esp32.esp32/B.ino.bootloader.bin 0x8000 B/build/esp32.esp32.esp32/B.ino.partitions.bin 0xe000 boot_app0.bin 0x10000 B/build/esp32.esp32.esp32/B.ino.bin -o "B-merged-$WARDRIVER_BUILD_ID.bin"
           
           find . -type f -not -path '*/.*' -exec sha256sum {} \; | tee hashes.txt
 

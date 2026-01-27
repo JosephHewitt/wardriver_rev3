@@ -32,6 +32,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define SD_CS 5 //SD card CS pin.
 #define SPI_FREQ 10000000
 
+//Default baud for inter-ESP32 comms on the PCB (A<->B)
+#define PCB_BAUD_RATE_DEFAULT 115200
+#define PCB_UART_TX_PIN 27
+#define PCB_UART_RX_PIN 14
+unsigned long pcb_baud_rate = 0; //the rate actually in use, loaded automatically.
+
 //The pipeline will dynamically replace this value. If you are self-compiling, it is safe to leave it unchanged.
 const String BUILD = "[CI_BUILD_HERE]";
 
@@ -56,6 +62,7 @@ boolean use_blocklist = false;
 //millis() when the last block happened.
 unsigned long ble_block_at = 0;
 unsigned long wifi_block_at = 0;
+
 
 //These variables are used to populate the LCD with statistics.
 float temperature;
@@ -145,6 +152,10 @@ const char* ntpServer = "pool.ntp.org";
 
 TaskHandle_t primary_scan_loop_handle;
 
+unsigned int b_side_read_failures = 0;
+#define B_SIDE_READ_FAILURES_TOLERATED 10
+#define B_SIDE_READ_BYTE_TIMEOUT 10000
+unsigned long b_side_last_byte_ms = 0;
 boolean b_working = false; //Set to true when we receive some valid data from side B.
 boolean ota_optout = false; //Set in the web interface
 boolean wigle_commercial = false; //Set in the web interface
@@ -180,6 +191,7 @@ boolean sb_bw16 = false;
 boolean scanble = true;  // Bluetooth scan preference
 boolean tempunits_c = true; // Temperature in Celsius by default
 boolean con_ssid_update = false; // update stored WiFi info with cfg.txt values?
+unsigned long pcb_baud_rate_high = 921600;
 
 #define MAX_AUTO_RESET_MS 1814400000
 #define MIN_AUTO_RESET_MS 7200000
@@ -1250,6 +1262,7 @@ void boot_config(){
   scanble = get_config_bool("scanble", scanble);
   tempunits_c = get_config_bool("tempunits_c", tempunits_c); // temperature in C or F
   con_ssid_update = get_config_bool("con_ssid_update", con_ssid_update); // update stored WiFi info?
+  pcb_baud_rate_high = get_config_int("pcb_baud_rate_high", pcb_baud_rate_high);
 
   if (auto_reset_ms != 0){
     if (auto_reset_ms > MAX_AUTO_RESET_MS){
@@ -2232,6 +2245,173 @@ void boot_config(){
   preferences.end();
 }
 
+boolean change_pcb_baud_now(unsigned long baud_to_use){
+  //Change baud rate on Serial1 (A<->B) immediately, without testing or confirming anything. No automatic revert on failure.
+  //Do not call this directly, unless you have a good reason. Use change_pcb_baud() instead.
+  ESP_LOGI(LOG_TAG_GENERIC, "Now changing baud to %u", baud_to_use);
+  Serial1.flush();
+  delay(5);
+  Serial1.end();
+  delay(20);
+  Serial1.begin(baud_to_use,SERIAL_8N1,PCB_UART_TX_PIN,PCB_UART_RX_PIN);
+  Serial1.flush();
+  return true;
+}
+
+boolean change_pcb_baud(unsigned long newbaud, unsigned long oldbaud){
+  //Change baud rate on Serial1 (A<->B). Can be run at any time, but requires an already-working connection.
+  //The new rate will be tested and confirmed. Returns true if the tests pass, returns false if the old rate was reverted.
+  ESP_LOGI(LOG_TAG_GENERIC, "About to change baud from %u to %u", oldbaud, newbaud);
+
+  Serial1.flush();
+  delay(20);
+  while (Serial1.available()){
+    Serial1.read();
+  }
+  Serial1.print("NEWBAUD:");
+  Serial1.println(newbaud);
+  Serial1.flush();
+
+  //How long to wait for a response:
+  unsigned long stop_time = millis() + 1500;
+  boolean to_proceed = false;
+  boolean got_some_data = false;
+  String buff = "";
+  while (millis() < stop_time){
+    buff = "";
+    buff = Serial1.readStringUntil('\n');
+    ESP_LOGV(LOG_TAG_GENERIC, "Changebaud buff = %s", buff.c_str());
+    if (buff.length() > 1){
+      got_some_data = true;
+    }
+    if (buff.indexOf("OKTOCHANGE") >= 0){
+      to_proceed = true;
+    }
+  }
+  if (!to_proceed && !got_some_data){
+    ESP_LOGW(LOG_TAG_GENERIC, "Side B was silent. Will change baud immediately, without confirmation, in case B is already there");
+    change_pcb_baud_now(newbaud);
+    Serial1.flush();
+    delay(100);
+    while(Serial1.available()){
+      Serial1.read();
+    }
+    stop_time = millis() + 5000;
+    while (millis() < stop_time){
+      buff = "";
+      buff = Serial1.readStringUntil('\n');
+      ESP_LOGV(LOG_TAG_GENERIC, "newbaud listener buff = %s", buff.c_str());
+      if (buff.length() > 1){
+        got_some_data = true;
+      }
+    }
+    if (!got_some_data){
+      ESP_LOGW(LOG_TAG_GENERIC, "Reverting baud to %u", oldbaud);
+      change_pcb_baud_now(oldbaud);
+      to_proceed = false;
+    } else {
+      //Seems B is already on the new baud, but need to verify that somehow.
+      //Will just continue, and hope the error detection later catches the problem if this is a false-positive.
+      ESP_LOGW(LOG_TAG_GENERIC, "Baud is now %u, but ESP-B did not handshake properly and was likely already at this baud. Will proceed.", newbaud);
+      pcb_baud_rate = newbaud;
+      return true;
+    }
+  }
+  if (!to_proceed){
+    ESP_LOGW(LOG_TAG_GENERIC, "Abort baud rate change, no response from side B");
+    return false;
+  }
+  change_pcb_baud_now(newbaud);
+
+  for (int i = 0; i < 50; i++){
+    //Send a lot of 1/0 transitions to help the clocks stabilize
+    Serial1.write(0xAA);
+    Serial1.flush();
+    if (Serial1.available()){
+      Serial1.read();
+    }
+    delay(10);
+  }
+
+  delay(30);
+
+  while (Serial1.available()){
+    //Ensure the buffers are empty
+    Serial1.flush();
+    Serial1.read();
+  }
+  Serial1.flush();
+
+  int success_count = 0;
+  for (int i = 0; i < 200; i++){
+    byte rand = esp_random();
+    byte rand_read = 0x00;
+    Serial1.write(rand);
+    Serial1.flush();
+    delay(20);
+    if (Serial1.available()){
+      while (Serial1.available()){
+        //Ensure we always work with the final byte in the buffer, in case it wasn't properly flushed.
+        rand_read = Serial1.read();
+        if (Serial1.available()){
+          ESP_LOGV(LOG_TAG_GENERIC, "Read an unexpected extra byte: %x", rand_read);
+          delay(2);
+        }
+      }
+      if (rand != rand_read){
+        ESP_LOGV(LOG_TAG_GENERIC, "Wanted %x but got %x", rand, rand_read);
+        //test_passed = false;
+        //break;
+        success_count = 0;
+      } else {
+        ESP_LOGV(LOG_TAG_GENERIC, "MATCH: %x is %x", rand, rand_read);
+        success_count++;
+      }
+    } else {
+      ESP_LOGV(LOG_TAG_GENERIC, "Nothing to read");
+    }
+  }
+
+  if (success_count < 90){
+    ESP_LOGW(LOG_TAG_GENERIC, "Baud rate change failed, reverting to %u", oldbaud);
+    change_pcb_baud_now(oldbaud);
+    return false;
+  }
+
+  boolean was_successful = false;
+
+  for (int i = 0; i < 12; i++){
+    Serial1.println("KEEPBAUD");
+    Serial1.flush();
+    delay(30);
+    String resp_buff = Serial1.readStringUntil('\n');
+    ESP_LOGV(LOG_TAG_GENERIC, "resp_buff = %s", resp_buff.c_str());
+    if (resp_buff.indexOf("WILLKEEP") >= 0){
+      was_successful = true;
+      break;
+    }
+    if (resp_buff.indexOf("KEEPBAUD") >= 0){
+      ESP_LOGD(LOG_TAG_GENERIC, "Side B still in loopback, will wait a while and flush buffers");
+      Serial1.flush();
+      delay(1000);
+      while (Serial1.available()){
+        Serial1.read();
+      }
+    }
+  }
+
+  if (!was_successful){
+    ESP_LOGW(LOG_TAG_GENERIC, "Baud rate change failed, reverting to %u", oldbaud);
+    change_pcb_baud_now(oldbaud);
+    return false;
+  }
+
+  pcb_baud_rate = newbaud;
+  ESP_LOGI(LOG_TAG_GENERIC, "Baud rate changed to %u successfully", newbaud);
+
+  return true;
+}
+
 void push_config(String key){
   //Send a config option to side B.
   String value = get_config_option(key);
@@ -2268,8 +2448,18 @@ void setup() {
     default_ssid.concat(" - ");
     default_ssid.concat(chip_id);
     default_ssid.remove(default_ssid.length()-3);
+    preferences.begin("wardriver", true);
     
-    Serial1.begin(115200,SERIAL_8N1,27,14);
+    pcb_baud_rate = preferences.getULong("pcb_baud_rate",0);
+    if (pcb_baud_rate < PCB_BAUD_RATE_DEFAULT){
+      pcb_baud_rate = PCB_BAUD_RATE_DEFAULT;
+    }
+    preferences.end();
+
+    ESP_LOGI(LOG_TAG_GENERIC, "Using baud rate %u with Side B", pcb_baud_rate);
+    
+    Serial1.begin(pcb_baud_rate,SERIAL_8N1,PCB_UART_TX_PIN,PCB_UART_RX_PIN);
+    Serial1.setTimeout(1000);
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
       ESP_LOGE(LOG_TAG_GENERIC, "SSD1306 allocation failed");
@@ -2399,12 +2589,21 @@ void setup() {
       }
     }
 
-    while (millis() < 7000){
+    while (millis() < 9000){
       //Side B will be ready after this long
       yield();
     }
 
+    bool pcb_baud_rate_changed = false;
     send_config_to_b();
+    if (pcb_baud_rate_high != pcb_baud_rate){
+      pcb_baud_rate_changed = change_pcb_baud(pcb_baud_rate_high, pcb_baud_rate);
+    }
+    if (pcb_baud_rate_changed){
+      preferences.begin("wardriver", false);
+      preferences.putULong("pcb_baud_rate", pcb_baud_rate);
+      preferences.end();
+    }
     
     boot_config();
     setup_wifi();
@@ -2655,18 +2854,16 @@ void loop(){
   }
 
   if (Serial1.available()){
-    String bside_buffer = "";
-    while (true){
-      char c;
-      if (Serial1.available()){
-        c = Serial1.read();
-        if (c != '\n'){
-          bside_buffer += c;
-        } else {
-          break;
-        }
-      }
+    b_side_last_byte_ms = millis();
+    String bside_buffer = Serial1.readStringUntil('\n');
+    ESP_LOGV(LOG_TAG_GENERIC, "S1 available, bside_buffer = %s", bside_buffer.c_str());
+    if (bside_buffer.length() < 2){
+      ESP_LOGW(LOG_TAG_GENERIC, "S1 blank message/timeout %u", b_side_read_failures);
+      b_side_read_failures++;
+    } else {
+      b_side_read_failures = 0;
     }
+    
     String towrite = "";
     towrite = parse_bside_line(bside_buffer);
     if (towrite.length() > 1){
@@ -2679,8 +2876,23 @@ void loop(){
         Serial.print("\n");
       }
     }
-    
   }
+
+  if (millis() > 60000){
+    if (millis() > b_side_last_byte_ms+B_SIDE_READ_BYTE_TIMEOUT){
+      ESP_LOGV(LOG_TAG_GENERIC, "No bytes from Side B since %u", b_side_last_byte_ms);
+      b_working = false;
+    }
+    if (b_side_read_failures > B_SIDE_READ_FAILURES_TOLERATED){
+      b_working = false;
+    }
+    if (!b_working && pcb_baud_rate != PCB_BAUD_RATE_DEFAULT && millis() > b_side_last_byte_ms+B_SIDE_READ_BYTE_TIMEOUT){
+      ESP_LOGW(LOG_TAG_GENERIC, "Side B comms unhealthy, attempt baud rate revert from %u to %u", pcb_baud_rate, PCB_BAUD_RATE_DEFAULT);
+      change_pcb_baud_now(PCB_BAUD_RATE_DEFAULT);
+      b_side_last_byte_ms = millis();
+    }
+  }
+
   if (gsm_count > 0){
     disp_gsm_count = gsm_count;
   }

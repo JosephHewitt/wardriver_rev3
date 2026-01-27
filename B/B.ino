@@ -88,37 +88,6 @@ void await_serial(){
   }
 }
 
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-    void onResult(BLEAdvertisedDevice advertisedDevice) {
-      unsigned char mac_bytes[6];
-      int values[6];
-  
-      if (6 == sscanf(advertisedDevice.getAddress().toString().c_str(), "%x:%x:%x:%x:%x:%x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])){
-        for(int i = 0; i < 6; ++i ){
-            mac_bytes[i] = (unsigned char) values[i];
-        }
-      
-        ble_found++;
-        if (!seen_mac(mac_bytes)){
-          save_mac(mac_bytes);
-
-          String ble_name = advertisedDevice.getName().c_str();
-          ble_name.replace(",","_");
-
-          await_serial();
-          serial_lock = true;
-          Serial1.print("BL,");
-          Serial1.print(advertisedDevice.getRSSI());
-          Serial1.print(",");
-          Serial1.print(advertisedDevice.getAddress().toString().c_str());
-          Serial1.print(",");
-          Serial1.println(ble_name);
-          serial_lock = false;
-        }
-      }
-    }
-};
-
 TaskHandle_t loop2handle;
 
 void request_temperature(){
@@ -306,7 +275,6 @@ void setup() {
     ESP_LOGD(LOG_TAG_GENERIC, "Setting up Bluetooth scanning");
     BLEDevice::init("");
     pBLEScan = BLEDevice::getScan(); //create new scan
-    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
     pBLEScan->setActiveScan(false); //active scan uses more power, but get results faster
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(50);  // less or equal setInterval value
@@ -447,13 +415,45 @@ void loop() {
 
   // * Scanning BLUETOOTH only if preference is ENABLED *
   if (scanBLE) {
-    BLEScanResults* foundDevices = pBLEScan->start(1.8, false);
+    ESP_LOGD(LOG_TAG_GENERIC, "Start BLE scan");
+    BLEScanResults* foundDevices = pBLEScan->start(1, false);
+    ble_found = foundDevices->getCount();
+    
+    for (int i = 0; i < ble_found; i++) {
+      unsigned char mac_bytes[6];
+      int values[6];
+
+      BLEAdvertisedDevice device = foundDevices->getDevice(i);
+      if (6 == sscanf(device.getAddress().toString().c_str(), "%x:%x:%x:%x:%x:%x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])){
+        for(int i = 0; i < 6; ++i ){
+            mac_bytes[i] = (unsigned char) values[i];
+        }
+
+        if (!seen_mac(mac_bytes)){
+          save_mac(mac_bytes);
+
+          String ble_name = device.getName().c_str();
+          ble_name.replace(",","_");
+
+          await_serial();
+          serial_lock = true;
+          Serial1.print("BL,");
+          Serial1.print(device.getRSSI());
+          Serial1.print(",");
+          Serial1.print(device.getAddress().toString().c_str());
+          Serial1.print(",");
+          Serial1.println(ble_name);
+          serial_lock = false;
+        }
+      }
+
+    }
     await_serial();
     serial_lock = true;
     Serial1.print("BLC,");
     Serial1.println(ble_found);
     serial_lock = false;
-    ESP_LOGV(LOG_TAG_GENERIC, "Found %i BLE devices", ble_found);
+    ESP_LOGD(LOG_TAG_GENERIC, "Found %i BLE devices", ble_found);
     pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
     yield();
     ble_found = 0;

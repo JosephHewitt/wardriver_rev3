@@ -1017,9 +1017,14 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     }
     //At this point, B side is in update mode.
     ESP_LOGD(LOG_TAG_GENERIC, "Side B ready");
+
+    while (Serial1.available()){
+      //Ensure the buffer is empty
+      Serial1.read();
+    }
     
     //0xE9 is the binary header, let's spam something else to be sure we're clear of junk
-    for(int i=0; i<3000; i++){
+    for(int i=0; i<2100; i++){
       Serial1.write(0xFF);
       Serial1.flush();
       if (i % 100 == 0 || i < 2){
@@ -1028,7 +1033,7 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         display.println("Please wait");
         display.print(i);
         display.print(" / ");
-        display.println("3000");
+        display.println("2100");
         display.display();
       }
       delay(1);
@@ -1040,36 +1045,37 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     File binreader = SD.open(filepath, FILE_READ);
     int counter = 0;
     int pause_byte_counter = 0;
+
+    static byte bbuf[1024];
     
     while (binreader.available()) {
-      byte c = binreader.read();
-      Serial1.write(c);
-      counter++;
-      pause_byte_counter++;
+      int bytes_read = binreader.read(bbuf, sizeof(bbuf));
+      //Read the next block into the buffer, then send it as soon as B requests it.
 
-      while (Serial1.available()){
-        //We don't care what B says, just clear the RX buffer
-        Serial1.read();
+      while (!Serial1.available()){
+          //This prevents sending more data until we receive anything from side B
+          //Put the display logic here so the device has something to do while waiting
+          if (counter > 50 || counter == 0){
+            counter = 1;
+            clear_display();
+            display.print("Installing: ");
+            float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
+            display.print(percent);
+            display.println("%");
+            display.println("DO NOT POWER OFF");
+            display.display();
+            ESP_LOGV(LOG_TAG_GENERIC, "Installation at %f%%", percent);
+          } else {
+            delay(1);
+          }
       }
-      
-      if (pause_byte_counter >= 110){
-        //If we stop, B will send us a message when it wants more.
-        while (!Serial1.available()){
-          yield();
-        }
-        pause_byte_counter = 0;
-      }
+      Serial1.read(); //Should be one byte only, clear it.
 
-      if (counter > 5000 || binreader.position() <= 1){
-        counter = 0;
-        clear_display();
-        display.print("Installing: ");
-        float percent = ((float)binreader.position() / (float)binreader.size()) * 100;
-        display.print(percent);
-        display.println("%");
-        display.println("DO NOT POWER OFF");
-        display.display();
-        ESP_LOGV(LOG_TAG_GENERIC, "Installation at %f%%", percent);
+      if (bytes_read > 0){
+        Serial1.write(bbuf, bytes_read);
+        Serial1.flush();
+        ESP_LOGV(LOG_TAG_GENERIC, "Sent %ib", bytes_read);
+        counter++;
       }
     }
     Serial1.flush();
@@ -3477,7 +3483,7 @@ String get_latest_datetime(String filename, boolean date_only){
   String dt = "";
   if (meta_lastwrite > YEAR_2020){
     dt = dt_string(meta_lastwrite);
-    ESP_LOGD(LOG_TAG_GENERIC, "get_latest_datetime, NEW method for file %s = %s", filename, dt);
+    ESP_LOGD(LOG_TAG_GENERIC, "get_latest_datetime, NEW method for file %s = %s", filename.c_str(), dt.c_str());
   } else {
     int seekto = reader.size()-512;
     if (seekto < 1){
@@ -3493,7 +3499,7 @@ String get_latest_datetime(String filename, boolean date_only){
           int endpos = buff.indexOf(",",startpos+3);
           if (startpos > 0 && endpos > 0){
             dt = buff.substring(startpos+2,endpos);
-            ESP_LOGD(LOG_TAG_GENERIC, "get_latest_datetime, OLD method for file %s = %s", filename, dt);
+            ESP_LOGD(LOG_TAG_GENERIC, "get_latest_datetime, OLD method for file %s = %s", filename.c_str(), dt.c_str());
             break;
           } 
         }

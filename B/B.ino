@@ -196,6 +196,7 @@ void setup() {
   preferences.end();
   ESP_LOGI(LOG_TAG_GENERIC, "Using baud rate %u with Side A", pcb_baud_rate);
   
+  Serial1.setRxBufferSize(2048);
   Serial1.begin(pcb_baud_rate,SERIAL_8N1,PCB_UART_TX_PIN,PCB_UART_RX_PIN); //ESP A, pins 27/14
   Serial1.setTimeout(1000);
   Serial1.println("REV3!");
@@ -354,11 +355,11 @@ void loop() {
   if (ota_mode){
     boolean preamble_started = false;
     boolean binary_started = false;
-    ESP_LOGD(LOG_TAG_GENERIC, "loop() task in OTA mode");
+    ESP_LOGI(LOG_TAG_GENERIC, "About to begin OTA");
     Serial1.println(ota_hash);
     Serial1.flush();
     Update.begin(UPDATE_SIZE_UNKNOWN);
-    #define binbuflen 4096
+    #define binbuflen 1024
     uint8_t binbuf[binbuflen] = { 0x00 };
     int counter = 0;
 
@@ -377,15 +378,14 @@ void loop() {
           //Do a flush on the first byte of the preamble, just in case. A side does too.
           if (!preamble_started){
             Serial1.flush();
-            ESP_LOGV(LOG_TAG_GENERIC, "OTA preamble start");
+            ESP_LOGD(LOG_TAG_GENERIC, "OTA preamble start");
           }
           preamble_started = true;
         }
         //0xE9 is the magic, but we won't use it. Maybe one day.
         if (c != 0xFF && preamble_started){
           if (!binary_started){
-            ESP_LOGV(LOG_TAG_GENERIC, "OTA preamble end");
-            Serial.flush();
+            ESP_LOGD(LOG_TAG_GENERIC, "OTA preamble end");
           }
           binary_started = true;
         }
@@ -395,18 +395,29 @@ void loop() {
           counter++;
           fw_last_byte = millis();
           if (counter == binbuflen){
+            ESP_LOGV(LOG_TAG_GENERIC, "Writing %i bytes", counter);
             Update.write(binbuf,counter);
             mbedtls_sha256_update(&ctx, binbuf, counter);
             counter = 0;
-            memset(binbuf, 'f', binbuflen);
+            Serial1.write(0xFF);
+            Serial1.flush();
           }
         }
       } else { //Serial1 available
-        Serial1.write(0xFF);
+        //Don't send another byte here, just flush anything that may be hanging around.
+        //Otherwise multiple writes will get queued and buffers will overrun
+        Serial1.flush();
+        delay(1);
+        if (millis() - fw_last_byte > 2500){
+          ESP_LOGW(LOG_TAG_GENERIC, "Transfer is stalled, nudging");
+          Serial1.write(0xFF);
+          Serial1.flush();
+          delay(20);
+        }
       }
       
-      if (millis() - fw_last_byte > 4000){
-         ESP_LOGD(LOG_TAG_GENERIC, "Upload complete");
+      if (millis() - fw_last_byte > 5000){
+         ESP_LOGI(LOG_TAG_GENERIC, "Upload complete");
         if (counter > 0){
           Update.write(binbuf,counter);
           mbedtls_sha256_update(&ctx, binbuf, counter);
@@ -508,7 +519,7 @@ void loop2( void * parameter) {
         ota_mode = true;
         while (ota_mode){
           //Keep this core busy
-          yield();
+          delay(100);
         }
       }
       

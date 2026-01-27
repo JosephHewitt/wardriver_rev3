@@ -13,6 +13,8 @@
 #include "mbedtls/sha256.h"
 #include "mbedtls/md.h"
 
+#include <Preferences.h>
+
 //Logging library and log tags:
 #include "esp_log.h"
 static const char* LOG_TAG_GENERIC = "wdGeneric";
@@ -25,6 +27,11 @@ static const char* LOG_TAG_GENERIC = "wdGeneric";
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+#define PCB_BAUD_RATE_DEFAULT 115200
+#define PCB_UART_TX_PIN 27
+#define PCB_UART_RX_PIN 14
+unsigned long pcb_baud_rate = 0; //Will be loaded from NVS at boot, and will fallback to the default above otherwise.
 
 //The pipeline will dynamically replace this value. If you are self-compiling, it is safe to leave it unchanged.
 const String BUILD = "[CI_BUILD_HERE]";
@@ -60,6 +67,8 @@ unsigned int mac_history_cursor = 0;
 
 int ble_found = 0; //The number of BLE devices found in a single scan, sent to side A.
 int wifi_scan_channel = 1; //The channel to scan (increments automatically)
+
+Preferences preferences;
 
 void setup_wifi(){
   //Gets the WiFi ready for scanning by disconnecting from networks and changing mode.
@@ -172,12 +181,23 @@ String hex_str(const unsigned char buf[], size_t len)
 
 void setup() {
   setup_wifi();
-  delay(5000);
+  delay(1000);
   int reset_reason = esp_reset_reason();
   Serial.begin(115200); //PC, if connected.
   ESP_LOGI(LOG_TAG_GENERIC, "Starting Side B build %s", BUILD.c_str());
+  preferences.begin("wardriverB", true);
   
-  Serial1.begin(115200,SERIAL_8N1,27,14); //ESP A, pins 27/14
+  pcb_baud_rate = preferences.getULong("pcb_baud_rate", 0);
+  ESP_LOGD(LOG_TAG_GENERIC, "pcb_baud_rate preferences loaded value %u", pcb_baud_rate);
+  if (pcb_baud_rate < PCB_BAUD_RATE_DEFAULT){
+    pcb_baud_rate = PCB_BAUD_RATE_DEFAULT;
+  }
+
+  preferences.end();
+  ESP_LOGI(LOG_TAG_GENERIC, "Using baud rate %u with Side A", pcb_baud_rate);
+  
+  Serial1.begin(pcb_baud_rate,SERIAL_8N1,PCB_UART_TX_PIN,PCB_UART_RX_PIN); //ESP A, pins 27/14
+  Serial1.setTimeout(1000);
   Serial1.println("REV3!");
   Serial1.print("RESET=");
   Serial1.println(reset_reason);
@@ -490,6 +510,82 @@ void loop2( void * parameter) {
           //Keep this core busy
           yield();
         }
+      }
+      
+      if (a_buff.startsWith("NEWBAUD:")){
+        String newbaud_string = "";
+        unsigned long newbaud = 0;
+        ESP_LOGV(LOG_TAG_GENERIC, "NEWBAUD message received");
+
+        newbaud_string = a_buff.substring(8);
+        newbaud = (int) newbaud_string.toInt();
+        if (newbaud < PCB_BAUD_RATE_DEFAULT){
+          ESP_LOGW(LOG_TAG_GENERIC, "Requesting a lower than default baud, rejecting it.");
+          continue;
+        }
+        await_serial();
+        serial_lock = true;
+
+        Serial1.flush();
+        Serial1.println("OKTOCHANGE");
+        Serial1.flush();
+
+        ESP_LOGI(LOG_TAG_GENERIC, "Will attempt to switch to %u baud", newbaud);
+
+        delay(5);
+        Serial1.end();
+        delay(20);
+        Serial1.begin(newbaud,SERIAL_8N1,PCB_UART_TX_PIN,PCB_UART_RX_PIN);
+        delay(30);
+        Serial1.flush();
+        delay(30);
+        while (Serial1.available()){
+          Serial1.read();
+        }
+
+        unsigned long stop_at = millis() + 6000;
+        while (millis() < stop_at){
+          delay(1);
+          if (Serial1.available()){
+            byte byte_in = Serial1.read();
+            ESP_LOGV(LOG_TAG_GENERIC, "Loopback byte %x", byte_in);
+            Serial1.write(byte_in);
+          }
+        }
+
+        stop_at = millis() + 6000;
+        boolean keep_baud = false;
+        while (millis() < stop_at){
+          delay(5);
+          String a_buff_ab = Serial1.readStringUntil('\n');
+          if (a_buff_ab.startsWith("KEEPBAUD")){
+            Serial1.println("WILLKEEP");
+            Serial1.flush();
+            ESP_LOGV(LOG_TAG_GENERIC, "Send WILLKEEP");
+            keep_baud = true;
+            delay(50);
+            break;
+          }
+          ESP_LOGV(LOG_TAG_GENERIC, "a_buff_ab = %s", a_buff_ab.c_str());
+        }
+        if (!keep_baud){
+          ESP_LOGW(LOG_TAG_GENERIC, "Reverting baud rate to %u", pcb_baud_rate);
+          Serial1.flush();
+          delay(5);
+          Serial1.end();
+          delay(20);
+          Serial1.begin(pcb_baud_rate,SERIAL_8N1,PCB_UART_TX_PIN,PCB_UART_RX_PIN);
+        } else {
+          preferences.begin("wardriverB", false);
+          preferences.putULong("pcb_baud_rate", newbaud);
+          preferences.end();
+          pcb_baud_rate = newbaud;
+          Serial1.println("WILLKEEP");
+          Serial1.flush();
+          ESP_LOGI(LOG_TAG_GENERIC, "Baud rate has been changed to %u successfully", newbaud);
+        }
+
+        serial_lock = false;
       }
       
     }

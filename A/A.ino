@@ -37,6 +37,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define PCB_UART_TX_PIN 27
 #define PCB_UART_RX_PIN 14
 unsigned long pcb_baud_rate = 0; //the rate actually in use, loaded automatically.
+boolean reverted_pcb_baud_rate = false;
+unsigned long verified_working_pcb_baud_rate = 0; //set automatically to the latest rate that definitely works
 
 //The pipeline will dynamically replace this value. If you are self-compiling, it is safe to leave it unchanged.
 const String BUILD = "[CI_BUILD_HERE]";
@@ -83,6 +85,7 @@ File filewriter;
 
 Preferences preferences;
 unsigned long bootcount = 0;
+unsigned long booted_at = 0;
 
 String default_ssid = "wardriver.uk";
 const char* default_psk = "wardriver.uk";
@@ -2685,6 +2688,8 @@ void setup() {
     filewriter.print("WigleWifi-1.4,appRelease=wardriver.uk " + VERSION + ",model=" + device_type_string() + ",release=wardriver.uk " + VERSION + ",device=" + device_string() + ",display=i2c LCD,board=" + device_board_string() + ",brand=" + device_brand_string() + "\n");
     filewriter.println("MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type");
     filewriter.flush();
+
+    booted_at = millis();
     
     clear_display();
     display.println("Starting main..");
@@ -2700,6 +2705,11 @@ void setup() {
       3,  /* Priority of the task */
       &primary_scan_loop_handle,  /* Task handle. */
       0); /* Core where the task should run */
+}
+
+unsigned long millis_main(){
+  //Return millis() but with the time in setup() removed. eg, the uptime of the actual wardriving session.
+  return millis()-booted_at;
 }
 
 void primary_scan_loop(void * parameter){
@@ -2828,10 +2838,15 @@ void lcd_show_stats(){
   display.print(" T:");
   display.println(total_new_wifi);
   } else {
-    if (millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
-      display.println("ESP-B NO DATA");
+    if (millis_main() > 10000){
+      //Don't display an ESP-B error shortly after boot since they are often false positives.
+      if (millis() - side_b_reset_millis > B_RESET_SEARCH_TIME){
+        display.println("ESP-B NO DATA");
+      } else {
+        display.println("ESP-B RESET");
+      }
     } else {
-      display.println("ESP-B RESET");
+      display.println("ESP-B Booting");
     }
   }
   display.println(dt_string(get_epoch()));
@@ -2878,7 +2893,7 @@ void loop(){
     }
   }
 
-  if (millis() > 60000){
+  if (millis_main() > 15000){
     if (millis() > b_side_last_byte_ms+B_SIDE_READ_BYTE_TIMEOUT){
       ESP_LOGV(LOG_TAG_GENERIC, "No bytes from Side B since %u", b_side_last_byte_ms);
       b_working = false;
@@ -2886,10 +2901,26 @@ void loop(){
     if (b_side_read_failures > B_SIDE_READ_FAILURES_TOLERATED){
       b_working = false;
     }
-    if (!b_working && pcb_baud_rate != PCB_BAUD_RATE_DEFAULT && millis() > b_side_last_byte_ms+B_SIDE_READ_BYTE_TIMEOUT){
-      ESP_LOGW(LOG_TAG_GENERIC, "Side B comms unhealthy, attempt baud rate revert from %u to %u", pcb_baud_rate, PCB_BAUD_RATE_DEFAULT);
-      change_pcb_baud_now(PCB_BAUD_RATE_DEFAULT);
+    if (!b_working && !reverted_pcb_baud_rate && pcb_baud_rate != verified_working_pcb_baud_rate){
+      //Comms are dead, and we're not using a confirmed-working rate, so change to the other configured baud rate.
+      unsigned long newbaud = 0;
+      if (pcb_baud_rate == PCB_BAUD_RATE_DEFAULT){
+        newbaud = pcb_baud_rate_high;
+      } else {
+        newbaud = PCB_BAUD_RATE_DEFAULT;
+      }
+      ESP_LOGW(LOG_TAG_GENERIC, "Side B comms unhealthy, attempt baud rate change from %u to %u", pcb_baud_rate, newbaud);
+      change_pcb_baud_now(newbaud);
+      pcb_baud_rate = newbaud;
+      reverted_pcb_baud_rate = true;
       b_side_last_byte_ms = millis();
+    }
+    if (reverted_pcb_baud_rate && b_working){
+      ESP_LOGI(LOG_TAG_GENERIC, "Baud rate reverted earlier, change seems good. Will persist.");
+      reverted_pcb_baud_rate = false;
+      preferences.begin("wardriver", false);
+      preferences.putULong("pcb_baud_rate", pcb_baud_rate);
+      preferences.end();
     }
   }
 
@@ -3279,6 +3310,7 @@ String parse_bside_line(String buff){
     ble_count = blc.toInt();
     ESP_LOGV(LOG_TAG_GENERIC, "Got BLE count: %s / %i", buff.c_str(), ble_count);
     b_working = true;
+    verified_working_pcb_baud_rate = pcb_baud_rate;
   }
 
   if (buff.indexOf("5G,") > -1) {
@@ -3287,6 +3319,7 @@ String parse_bside_line(String buff){
     count_5ghz = count_5ghz_str.toInt();
     ESP_LOGV(LOG_TAG_GENERIC, "Got 5GHz WiFi count: %s / %i", buff.c_str(), count_5ghz);
     b_working = true;
+    verified_working_pcb_baud_rate = pcb_baud_rate;
     is_5ghz = true;
   }
   

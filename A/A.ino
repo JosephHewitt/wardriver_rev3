@@ -196,6 +196,7 @@ boolean tempunits_c = true; // Temperature in Celsius by default
 boolean con_ssid_update = false; // update stored WiFi info with cfg.txt values?
 unsigned long pcb_baud_rate_high = 921600;
 
+#define MAX_PCB_BAUD_RATE_HIGH 4000000 //Anything above 4Mhz is likely going to be unreliable, so cap it there.
 #define MAX_AUTO_RESET_MS 1814400000
 #define MIN_AUTO_RESET_MS 7200000
 
@@ -1266,6 +1267,13 @@ void boot_config(){
   tempunits_c = get_config_bool("tempunits_c", tempunits_c); // temperature in C or F
   con_ssid_update = get_config_bool("con_ssid_update", con_ssid_update); // update stored WiFi info?
   pcb_baud_rate_high = get_config_int("pcb_baud_rate_high", pcb_baud_rate_high);
+  
+  if (pcb_baud_rate_high < PCB_BAUD_RATE_DEFAULT){
+    pcb_baud_rate_high = PCB_BAUD_RATE_DEFAULT;
+  }
+  if (pcb_baud_rate_high > MAX_PCB_BAUD_RATE_HIGH){
+    pcb_baud_rate_high = MAX_PCB_BAUD_RATE_HIGH;
+  }
 
   if (auto_reset_ms != 0){
     if (auto_reset_ms > MAX_AUTO_RESET_MS){
@@ -2456,6 +2464,9 @@ void setup() {
     pcb_baud_rate = preferences.getULong("pcb_baud_rate",0);
     if (pcb_baud_rate < PCB_BAUD_RATE_DEFAULT){
       pcb_baud_rate = PCB_BAUD_RATE_DEFAULT;
+    }
+    if (pcb_baud_rate > MAX_PCB_BAUD_RATE_HIGH){
+      pcb_baud_rate = MAX_PCB_BAUD_RATE_HIGH;
     }
     preferences.end();
 

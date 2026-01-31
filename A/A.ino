@@ -3226,6 +3226,7 @@ String parse_bside_line(String buff){
       }
     }
     
+    b_working = true;
   }
 
   if (buff.indexOf("GSM,") > -1) {

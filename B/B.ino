@@ -502,6 +502,12 @@ void loop() {
       }
     }
   }
+  if (!scanBLE){
+    await_serial();
+    serial_lock = true;
+    Serial1.println("BLC,0");
+    serial_lock = false;
+  }
 }
 
 void loop2( void * parameter) {

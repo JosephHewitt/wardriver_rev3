@@ -54,8 +54,11 @@ To upload code to your ESP32 boards, please use the following configuration in t
 - PSRAM: `Disabled`
 - Arduino Runs On: `Core 1`
 - Events Run On: `Core 1`
+- Core Debug Level: `Debug` or `Verbose`
 
 If you have upload issues, try lowering the upload speed. Some users also report having to hold the "boot" button on the ESP32 board after connecting it to their PC before pressing the upload button in the Arduino IDE.
+
+Note on Logging: Effective in version 1.3 the 'Core Debug Level' setting in the Arduino IDE controls which logs will be sent to the Serial monitor. This is a compile time parameter, so if you change the level (for example from Debug to Verbose) you must reflash the ESP32 boards.
 
 ## Flashing (from binary) [BETA]
 

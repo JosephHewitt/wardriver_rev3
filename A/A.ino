@@ -3381,16 +3381,17 @@ String gps_string(){
     last_lons = lons;
   }
 
-  if (nmea.getHDOP() > 250){
-    lats = "";
-    lons = "";
-  }
-
   //HDOP returned here is in tenths and needs dividing by 10 to make it 'true'.
   //We're using this as a very basic estimate of accuracy by multiplying HDOP with the precision of the GPS module (2.5)
   //This isn't precise at all, but is a very rough estimate to your GPS accuracy.
   float accuracy = ((float)nmea.getHDOP()/10);
   accuracy = accuracy * 2.5;
+
+  if (nmea.getHDOP() > 250){
+    lats = "";
+    lons = "";
+    accuracy = 1000;
+  }
 
   if (!nmea.isValid()){
     lats = "";
@@ -3399,7 +3400,9 @@ String gps_string(){
     if (lastgps + gps_allow_stale_time > millis()){
       lats = last_lats;
       lons = last_lons;
-      accuracy = 5 + (millis() - lastgps) / 100;
+      if (lats != "" && lons != ""){
+        accuracy = 5 + (millis() - lastgps) / 100;
+      }
     } else {
       ESP_LOGD(LOG_TAG_GENERIC, "Bad GPS, will use GSM positioning");
       struct coordinates pos = gsm_get_current_position();
@@ -3423,7 +3426,11 @@ String gps_string(){
     ESP_LOGV(LOG_TAG_GENERIC, "Forced Lat/Lon to: %f,%f", force_lat, force_lon);
   }
 
-  out = lats + "," + lons + "," + altf + "," + accuracy;
+  if (lats == "" && lons == ""){
+    out = ",,,";
+  } else {
+    out = lats + "," + lons + "," + altf + "," + accuracy;
+  }
   return out;
 }
 

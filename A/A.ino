@@ -1046,10 +1046,18 @@ boolean install_firmware(String filepath, String expect_hash = "") {
     int counter = 0;
     int pause_byte_counter = 0;
 
-    static byte bbuf[1024];
+    #define bbuf_maxlen 1024
+    int bbuf_len = bbuf_maxlen;
+
+    // If we're on the slower baud, assume that Side B is out of date.
+    // Make a few changes to ensure backwards-compatibility.
+    if (pcb_baud_rate == PCB_BAUD_RATE_DEFAULT){
+      bbuf_len = 110;
+    }
+    static byte bbuf[bbuf_maxlen];
     
     while (binreader.available()) {
-      int bytes_read = binreader.read(bbuf, sizeof(bbuf));
+      int bytes_read = binreader.read(bbuf, bbuf_len);
       //Read the next block into the buffer, then send it as soon as B requests it.
 
       while (!Serial1.available()){
@@ -1076,6 +1084,12 @@ boolean install_firmware(String filepath, String expect_hash = "") {
         Serial1.flush();
         ESP_LOGV(LOG_TAG_GENERIC, "Sent %ib", bytes_read);
         counter++;
+      }
+      if (pcb_baud_rate == PCB_BAUD_RATE_DEFAULT){
+        delay(1);
+        while(Serial1.available()){
+          Serial1.read();
+        }
       }
     }
     Serial1.flush();

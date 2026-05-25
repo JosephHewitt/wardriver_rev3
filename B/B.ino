@@ -44,6 +44,7 @@ boolean ota_mode = false; //Set to true automatically when doing OTA update
 String ota_hash = ""; //SHA256 of the OTA update, set automatically.
 
 boolean using_bw16 = false; //Set when advanced config is sb_bw16=yes https://wardriver.uk/advanced_config
+boolean scan_passive = false; // WiFi scan in passive mode? - Default = FALSE (active scan) - does NOT apply to BW16
 
 // The WiFi channels to scan with the B-side ESP32
 // This is in prioritized order should we also be scanning Bluetooth, we will only scan the first 6 entries
@@ -201,6 +202,10 @@ void setup() {
     // BlueTooth scan preference
     if (buff.indexOf("scanble=no") > -1){
       scanBLE = false;
+    }
+    // WiFi scan mode preference - catch if passive mode is TRUE
+    if (buff.indexOf("scan_passive=yes") > -1){
+      scan_passive = true;
     }
   }
 
@@ -478,13 +483,15 @@ void loop() {
     channel_max = 14;  // if we aren't scanning Bluetooth, scan all 14
   }
 
+    ESP_LOGI(LOG_TAG_GENERIC, "Scanning in Passive mode: %s", scan_passive ? "true" : "false");
+
   // Get the channel to scan from the array
   for (int y = 0; y < channel_max; y++) {  // scan the channels from the array
     wifi_scan_channel = channel_list[y];
   
     ESP_LOGV(LOG_TAG_GENERIC, "Start Scan C%i", wifi_scan_channel);
     //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
-    int n = WiFi.scanNetworks(false,true,false,110,wifi_scan_channel);
+    int n = WiFi.scanNetworks(false,true,scan_passive,110,wifi_scan_channel);
     ESP_LOGV(LOG_TAG_GENERIC, "Finish Scan C%i = %i", wifi_scan_channel, n);
     if (n > 0){
       for (int i = 0; i < n; i++) {

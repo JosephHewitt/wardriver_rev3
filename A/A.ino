@@ -195,6 +195,7 @@ boolean scanble = true;  // Bluetooth scan preference
 boolean tempunits_c = true; // Temperature in Celsius by default
 boolean con_ssid_update = false; // update stored WiFi info with cfg.txt values?
 unsigned long pcb_baud_rate_high = 921600;
+boolean scan_passive = false; // WiFi scan in passive mode? - Default = FALSE (active scan) - does NOT apply to BW16
 
 #define MAX_PCB_BAUD_RATE_HIGH 4000000 //Anything above 4Mhz is likely going to be unreliable, so cap it there.
 #define MAX_AUTO_RESET_MS 1814400000
@@ -1292,6 +1293,7 @@ void boot_config(){
   tempunits_c = get_config_bool("tempunits_c", tempunits_c); // temperature in C or F
   con_ssid_update = get_config_bool("con_ssid_update", con_ssid_update); // update stored WiFi info?
   pcb_baud_rate_high = get_config_int("pcb_baud_rate_high", pcb_baud_rate_high);
+  scan_passive = get_config_bool("scan_passive", scan_passive);  // WiFi scanning mode - passive or active flag
   
   if (pcb_baud_rate_high < PCB_BAUD_RATE_DEFAULT){
     pcb_baud_rate_high = PCB_BAUD_RATE_DEFAULT;
@@ -2466,6 +2468,7 @@ void send_config_to_b(){
   push_config("sb_bw16");
   // BlueTooth scan preference
   push_config("scanble");
+  push_config("scan_passive");  // WiFi scanning mode - passive or active flag
 }
 
 void setup() {
@@ -2751,15 +2754,17 @@ unsigned long millis_main(){
 void primary_scan_loop(void * parameter){
   //This core will be dedicated entirely to WiFi scanning in an infinite loop.
   setup_wifi();
+  ESP_LOGI(LOG_TAG_GENERIC, "Scanning in Passive mode: %s", scan_passive ? "true" : "false");
+
   while (true){
     disp_wifi_count = wifi_count;
     wifi_count = 0;
-    
+
     for(int scan_channel = 1; scan_channel < 12; scan_channel++){
       yield();
       ESP_LOGV(LOG_TAG_GENERIC, "Start Scan C%i", scan_channel);
       //scanNetworks(bool async, bool show_hidden, bool passive, uint32_t max_ms_per_chan, uint8_t channel)
-      int n = WiFi.scanNetworks(false,true,false,110,scan_channel);
+      int n = WiFi.scanNetworks(false,true,scan_passive,110,scan_channel);
       ESP_LOGV(LOG_TAG_GENERIC, "Finish Scan C%i = %i", scan_channel, n);
       if (n < 0){
         //Got a scan error, add a delay to allow other tasks on this core to run and to hopefully let WiFi issues settle down

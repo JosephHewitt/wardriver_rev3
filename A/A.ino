@@ -1,7 +1,7 @@
 //Joseph Hewitt 2023
 //This code is for the ESP32 "Side A" of the wardriver hardware revision 3.
 
-const String VERSION = "1.3.0b1";
+const String VERSION = "1.3.0b2";
 
 #include <GParser.h>
 #include <MicroNMEA.h>
@@ -664,14 +664,19 @@ String ota_get_url(String url, String write_to=""){
         File fw_writer = SD.open(write_to, FILE_WRITE);
         unsigned long lastbyte = millis();
         unsigned long bytecounter = 0;
+        byte dbuf[256];
+        int blocks_read = 0;
+        unsigned long total_bytes_read = 0;
         while (httpsclient.connected() && (millis() - lastbyte) < 10000){
           if (httpsclient.available()){
-            byte c = httpsclient.read();
-            bytecounter++;
-            fw_writer.write(c);
+            int bytes_read = httpsclient.read(dbuf, sizeof(dbuf));
+            total_bytes_read += bytes_read;
+            fw_writer.write(dbuf, bytes_read);
             lastbyte = millis();
-            float percent = ((float)bytecounter / (float)content_length_long) * 100;
-            if (bytecounter % 6000 == 0){
+            blocks_read++;
+            if (blocks_read > 250){
+              blocks_read = 0;
+              float percent = ((float)total_bytes_read / (float)content_length_long) * 100;
               clear_display();
               display.print("Downloading ");
               display.println(write_to);
